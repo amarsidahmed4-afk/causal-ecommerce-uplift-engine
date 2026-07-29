@@ -2,14 +2,16 @@
 FastAPI High-Throughput Microservice.
 Executes zero-Pandas NumPy inference, Causal EMV Gate, and Async Pub/Sub Logging.
 """
+import json
 from datetime import datetime, timezone
+import numpy as np
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import settings
 from src.api.schemas import LiveEventInput, PredictionResponse
 from src.causal.t_learner import CausalTLearner
-from src.features.intra_session import IntraSessionFeatureExtractor  # <-- IMPORTED FEATURE EXTRACTOR
+from src.features.intra_session import IntraSessionFeatureExtractor
 from src.telemetry.publisher import publish_telemetry_async
 
 # Initialize FastAPI Application
@@ -63,11 +65,11 @@ async def predict_causal_intent(event: LiveEventInput):
             aov=custom_aov if custom_aov > 0 else None
         )
 
-        # 4. Construct Rich Telemetry Payload for Async Logging
+        # 4. Construct Rich Telemetry Payload with Stringified JSON for BigQuery Pub/Sub
         telemetry_payload = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "event_inputs": event.model_dump(),
-            "derived_metrics": derived_metrics,
+            "event_inputs": json.dumps(event.model_dump()),        # Stringified JSON
+            "derived_metrics": json.dumps(derived_metrics),          # Stringified JSON
             "p_control": result["p_control"],
             "p_treatment": result["p_treatment"],
             "cate_uplift": result["cate_uplift"],
