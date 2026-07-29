@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     GCP_REGION: str = "europe-west1"
     PUBSUB_TOPIC_ID: str = "intent-telemetry-stream"
     BQ_DATASET_ID: str = "ml_logs"
-    BQ_TABLE_ID: str = "intent_predictions_log"
+    BQ_TABLE_ID: str = "causal_predictions_log"
 
     # -------------------------------------------------------------------------
     # 3. Financial & Expected Monetary Value (EMV) Parameters
