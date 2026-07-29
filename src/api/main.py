@@ -3,13 +3,13 @@ FastAPI High-Throughput Microservice.
 Executes zero-Pandas NumPy inference, Causal EMV Gate, and Async Pub/Sub Logging.
 """
 from datetime import datetime, timezone
-import numpy as np
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import settings
 from src.api.schemas import LiveEventInput, PredictionResponse
 from src.causal.t_learner import CausalTLearner
+from src.features.intra_session import IntraSessionFeatureExtractor  # <-- IMPORTED FEATURE EXTRACTOR
 from src.telemetry.publisher import publish_telemetry_async
 
 # Initialize FastAPI Application
@@ -22,7 +22,7 @@ app = FastAPI(
 # Enable CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Configure for specific storefront domain in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -47,31 +47,27 @@ async def health_check():
 async def predict_causal_intent(event: LiveEventInput):
     """
     Real-Time Causal Intent & EMV Decision Endpoint.
-    Converts input directly into a 2D NumPy array for ultra-low latency execution.
+    Uses IntraSessionFeatureExtractor for zero-Pandas NumPy vector construction (<1ms).
     """
     try:
-        # 1. Zero-Pandas Allocation: Construct 2D NumPy array directly in C-contiguous memory
-        input_vector = np.array([[
-            event.visitor_type_encoded,
-            event.traffic_type,
-            event.session_duration_sec,
-            event.product_views_count,
-            event.cart_add_count,
-            event.price_sum_viewed,
-            event.time_since_last_action
-        ]], dtype=np.float32)
+        # 1. Feature Extraction: Construct 2D NumPy array in C-contiguous memory
+        input_vector = IntraSessionFeatureExtractor.extract_feature_vector(event)
+        
+        # 2. Compute Derived Session Metrics for Telemetry Logging
+        derived_metrics = IntraSessionFeatureExtractor.compute_derived_session_metrics(event)
 
-        # 2. Execute Causal Uplift Estimation & Financial EMV Gate
+        # 3. Execute Causal Uplift Estimation & Financial EMV Gate
         custom_aov = event.cart_value_override if event.cart_value_override is not None else event.price_sum_viewed
         result = causal_engine.predict_uplift_and_emv(
             input_vector=input_vector,
             aov=custom_aov if custom_aov > 0 else None
         )
 
-        # 3. Construct Telemetry Payload for Async Logging
+        # 4. Construct Rich Telemetry Payload for Async Logging
         telemetry_payload = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "event_inputs": event.model_dump(),
+            "derived_metrics": derived_metrics,
             "p_control": result["p_control"],
             "p_treatment": result["p_treatment"],
             "cate_uplift": result["cate_uplift"],
@@ -80,10 +76,10 @@ async def predict_causal_intent(event: LiveEventInput):
             "version": settings.VERSION
         }
 
-        # 4. Stream to Cloud Pub/Sub asynchronously (Non-blocking)
+        # 5. Stream to Cloud Pub/Sub asynchronously (Non-blocking)
         publish_telemetry_async(telemetry_payload)
 
-        # 5. Return synchronous JSON response payload
+        # 6. Return synchronous JSON response payload
         return PredictionResponse(
             trigger_discount=result["trigger_discount"],
             net_emv_dollars=result["net_emv_dollars"],
