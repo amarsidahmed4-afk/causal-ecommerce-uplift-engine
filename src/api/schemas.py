@@ -1,12 +1,13 @@
 """
 Pydantic V2 Schemas for Real-Time Intra-Session Event Payload Validation.
+Supports both Client-Side and Server-Side (GTM Server-Side / Node.js) payload formats.
 """
 from typing import Optional
 from pydantic import BaseModel, Field
 
 
 class LiveEventInput(BaseModel):
-    """Real-time event payload captured from storefront dataLayer."""
+    """Real-time event payload captured from storefront dataLayer or Server-Side proxy."""
     visitor_type_encoded: int = Field(..., ge=0, le=2, description="0: New_Visitor, 1: Returning_Visitor, 2: Other")
     traffic_type: int = Field(..., ge=1, le=20, description="Traffic source category ID (1-20)")
     session_duration_sec: float = Field(..., ge=0.0, description="Total active session duration in seconds")
@@ -15,15 +16,18 @@ class LiveEventInput(BaseModel):
     price_sum_viewed: float = Field(..., ge=0.0, description="Cumulative sum of item prices viewed ($)")
     time_since_last_action: float = Field(..., ge=0.0, description="Seconds elapsed since last user click/action")
     
-    # Optional override for custom shopping cart dollar value
+    # Optional overrides & Server-Side Tracking Fields
     cart_value_override: Optional[float] = Field(None, ge=0.0, description="Current shopping cart value ($) if available")
+    session_id: Optional[str] = Field(None, description="GA4 client_id or custom session UUID for server-side correlation")
+    tracking_mode: Optional[str] = Field("client_side", description="'client_side' or 'server_side'")
 
 
 class PredictionResponse(BaseModel):
-    """Synchronous JSON response returned to Google Tag Manager / Storefront."""
+    """Synchronous JSON response returned to Google Tag Manager / Storefront / Server-Side Proxy."""
     trigger_discount: bool = Field(..., description="Whether Expected Monetary Value is positive")
     net_emv_dollars: float = Field(..., description="Net expected profit gain in dollars ($)")
     cate_uplift: float = Field(..., description="Conditional Average Treatment Effect probability uplift")
     p_control: float = Field(..., description="Conversion probability without discount")
     p_treatment: float = Field(..., description="Conversion probability with discount")
     version: str = Field(..., description="API Version")
+    tracking_mode: str = Field("client_side", description="Reflects 'client_side' or 'server_side' execution mode")

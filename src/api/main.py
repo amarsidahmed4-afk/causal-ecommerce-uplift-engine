@@ -1,11 +1,12 @@
 """
 FastAPI High-Throughput Microservice.
-Executes zero-Pandas NumPy inference, Causal EMV Gate, and Async Pub/Sub Logging.
+Supports dual Client-Side and Server-Side tracking with zero-Pandas NumPy inference.
 """
 import json
 from datetime import datetime, timezone
+from typing import Optional
 import numpy as np
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import settings
@@ -14,14 +15,12 @@ from src.causal.t_learner import CausalTLearner
 from src.features.intra_session import IntraSessionFeatureExtractor
 from src.telemetry.publisher import publish_telemetry_async
 
-# Initialize FastAPI Application
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Low-Latency Causal Uplift & EMV Decision Microservice"
+    description="Low-Latency Causal Uplift & EMV Decision Microservice (Dual Client & Server-Side Tracking)"
 )
 
-# Enable CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,7 +29,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Causal Engine Singleton on startup
 causal_engine = CausalTLearner()
 
 
@@ -46,16 +44,22 @@ async def health_check():
 
 
 @app.post("/predict_v2", response_model=PredictionResponse, status_code=status.HTTP_200_OK)
-async def predict_causal_intent(event: LiveEventInput):
+async def predict_causal_intent(
+    event: LiveEventInput,
+    x_tracking_mode: Optional[str] = Header(None, alias="X-Tracking-Mode")
+):
     """
     Real-Time Causal Intent & EMV Decision Endpoint.
-    Uses IntraSessionFeatureExtractor for zero-Pandas NumPy vector construction (<1ms).
+    Accepts telemetry from browser JavaScript or Server-Side (GTM Server / Shopify app) proxies.
     """
     try:
+        # Determine tracking mode (Header takes priority over payload body)
+        resolved_tracking_mode = x_tracking_mode or event.tracking_mode or "client_side"
+
         # 1. Feature Extraction: Construct 2D NumPy array in C-contiguous memory
         input_vector = IntraSessionFeatureExtractor.extract_feature_vector(event)
         
-        # 2. Compute Derived Session Metrics for Telemetry Logging
+        # 2. Compute Derived Session Metrics
         derived_metrics = IntraSessionFeatureExtractor.compute_derived_session_metrics(event)
 
         # 3. Execute Causal Uplift Estimation & Financial EMV Gate
@@ -65,16 +69,18 @@ async def predict_causal_intent(event: LiveEventInput):
             aov=custom_aov if custom_aov > 0 else None
         )
 
-        # 4. Construct Rich Telemetry Payload with Stringified JSON for BigQuery Pub/Sub
+        # 4. Construct Telemetry Payload for Async Logging
         telemetry_payload = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "event_inputs": json.dumps(event.model_dump()),        # Stringified JSON
-            "derived_metrics": json.dumps(derived_metrics),          # Stringified JSON
+            "event_inputs": json.dumps(event.model_dump()),
+            "derived_metrics": json.dumps(derived_metrics),
             "p_control": result["p_control"],
             "p_treatment": result["p_treatment"],
             "cate_uplift": result["cate_uplift"],
             "net_emv_dollars": result["net_emv_dollars"],
             "trigger_discount": result["trigger_discount"],
+            "tracking_mode": resolved_tracking_mode,
+            "session_id": event.session_id,
             "version": settings.VERSION
         }
 
@@ -88,7 +94,8 @@ async def predict_causal_intent(event: LiveEventInput):
             cate_uplift=result["cate_uplift"],
             p_control=result["p_control"],
             p_treatment=result["p_treatment"],
-            version=settings.VERSION
+            version=settings.VERSION,
+            tracking_mode=resolved_tracking_mode
         )
 
     except Exception as e:
