@@ -46,7 +46,8 @@ causal-ecommerce-uplift-engine/
 │   ├── t_learner_control.joblib
 │   └── t_learner_treatment.joblib
 ├── notebooks/
-│   └── 01_causal_t_learner_training.py # A/B dataset generation & model trainer
+│   ├── 01_causal_t_learner_training.py  # A/B dataset generation & model trainer
+│   └── 02_shopify_store_simulation.py   # Live storefront multi-persona simulator
 ├── src/
 │   ├── api/                    # FastAPI routes (/predict_v2) & Pydantic v2 schemas
 │   ├── causal/                 # T-Learner CATE estimator & EMV Decision Gate
@@ -97,9 +98,36 @@ uvicorn src.api.main:app --reload --port 8000
 ```
 *Interactive Swagger documentation live at:* `http://127.0.0.1:8000/docs`
 
-### 5. Run Streamlit UI Dashboard Simulator
+### 5. Run Live Shopify Storefront Traffic Simulation
+```bash
+python3 notebooks/02_shopify_store_simulation.py
+```
+
+### 6. Run Streamlit UI Dashboard Simulator
 ```bash
 streamlit run ui/streamlit_app.py
+```
+
+---
+
+## Live Shopify Storefront Traffic Simulation
+
+The repository includes an end-to-end storefront simulator (`notebooks/02_shopify_store_simulation.py`) that models real-time customer browsing across 3 merchant buyer personas:
+1. **Persuadable Buyer:** Active cart, price sensitive $\rightarrow$ High CATE Uplift $\rightarrow$ **TRIGGER DISCOUNT**.
+2. **Organic Buyer:** Loyal returning customer $\rightarrow$ High Baseline Propensity $\rightarrow$ **SUPPRESS DISCOUNT** (Protects Profit Margin).
+3. **Window Shopper:** Bounces quickly $\rightarrow$ Low Uplift/Baseline $\rightarrow$ **SUPPRESS DISCOUNT**.
+
+### Sample Merchant Executive Summary Output
+```text
+===========================================================================
+ 📊 SHOPIFY MERCHANT EXECUTIVE FINANCIAL SUMMARY 
+===========================================================================
+ Total Customer Sessions Analyzed  : 30
+ Discounts Triggered (Persuadables): 11 (36.7%)
+ Discounts Suppressed (Organic/Cold): 19 (63.3%)
+ Profit Margin Saved               : $85.00 (Prevented cannibalization on organic buyers)
+ Estimated Net Dollar Lift ($)      : +$38.42
+===========================================================================
 ```
 
 ---
