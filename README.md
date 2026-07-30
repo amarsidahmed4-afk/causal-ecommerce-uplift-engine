@@ -1,6 +1,6 @@
 # Causal Ecommerce Uplift Engine v2.0
 
-An enterprise-grade, low-latency microservice designed to maximize e-commerce gross margins using **Causal Inference (CATE Estimation)** and **Expected Monetary Value (EMV) Decision Gating**.
+An enterprise-grade, low-latency microservice designed to maximize e-commerce gross margins using **Causal Inference (CATE Estimation)**, **Expected Monetary Value (EMV) Decision Gating**, and **Dual Client & Server-Side Tracking**.
 
 Unlike traditional propensity engines that predict *intent* (and waste discounts on organic buyers), this engine isolates the **Conditional Average Treatment Effect (CATE)**—identifying the exact subset of users whose purchasing behavior is positively incremented by an intervention.
 
@@ -22,6 +22,14 @@ Interventions are triggered **only when the Expected Monetary Value is positive*
 $$\text{EMV} = \left[ P(Y^{(1)}) \times (\text{AOV} \cdot \text{Margin} - \text{Discount}) \right] - \left[ P(Y^{(0)}) \times (\text{AOV} \cdot \text{Margin}) \right]$$
 
 If $\text{EMV} > \$0.50$, the API triggers the incentive tag; otherwise, it suppresses it.
+
+---
+
+## Dual-Mode Telemetry (Client & Server-Side Tracking)
+
+To maximize data quality and bypass client-side ad-blockers, v2.0 supports two tracking architectures:
+1. **Client-Side DataLayer Tracking:** Ultra-fast sub-20ms browser execution for immediate dynamic popups/modals (`GTM_INTEGRATION_V2.md`).
+2. **GTM Server-Side Proxy Tracking:** Server-to-server HTTP proxying via first-party subdomains (`metrics.merchantstore.com`) for **100% ad-blocker immunity and Safari ITP compliance** (`GTM_SERVER_SIDE_INTEGRATION.md`).
 
 ---
 
@@ -47,7 +55,8 @@ causal-ecommerce-uplift-engine/
 ├── tests/                      # Pytest unit & integration test suite
 ├── ui/                         # Streamlit interactive dashboard simulator
 ├── Dockerfile                  # Production container recipe running as 'appuser'
-├── GTM_INTEGRATION_V2.md       # Frontend & Google Tag Manager integration guide
+├── GTM_INTEGRATION_V2.md       # Client-side browser & GTM integration guide
+├── GTM_SERVER_SIDE_INTEGRATION.md # Server-side GTM container integration guide
 ├── pytest.ini                  # Pytest environment configuration
 └── requirements.txt            # Production backend dependencies
 ```
@@ -106,7 +115,8 @@ streamlit run ui/streamlit_app.py
   "product_views_count": 5,
   "cart_add_count": 1,
   "price_sum_viewed": 150.0,
-  "time_since_last_action": 12.5
+  "time_since_last_action": 12.5,
+  "tracking_mode": "server_side"
 }
 ```
 
@@ -118,11 +128,13 @@ streamlit run ui/streamlit_app.py
   "cate_uplift": 0.1712,
   "p_control": 0.35,
   "p_treatment": 0.5212,
-  "version": "2.0.0"
+  "version": "2.0.0",
+  "tracking_mode": "server_side"
 }
 ```
 
 ---
 
-## Storefront Integration
-For integrating live storefronts (Shopify, WooCommerce, React/Next.js) via Google Tag Manager, refer directly to `GTM_INTEGRATION_V2.md`.
+## Storefront Integration Guides
+* **Client-Side Browser Integration:** Refer to `GTM_INTEGRATION_V2.md`.
+* **Server-Side Container Integration (100% Ad-Blocker Immunity):** Refer to `GTM_SERVER_SIDE_INTEGRATION.md`.
