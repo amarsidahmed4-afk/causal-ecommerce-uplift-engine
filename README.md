@@ -25,16 +25,45 @@ If $\text{EMV} > \$0.50$, the API triggers the incentive tag; otherwise, it supp
 
 ---
 
+## Repository Structure
+
+```text
+causal-ecommerce-uplift-engine/
+├── .github/
+│   └── workflows/
+│       └── deploy.yml          # CI/CD pipeline to Cloud Run with Buildx caching
+├── config/
+│   └── settings.py             # Type-safe Pydantic environment configuration
+├── models/                     # Serialized LightGBM Causal Artifacts (.joblib)
+│   ├── t_learner_control.joblib
+│   └── t_learner_treatment.joblib
+├── notebooks/
+│   └── 01_causal_t_learner_training.py # A/B dataset generation & model trainer
+├── src/
+│   ├── api/                    # FastAPI routes (/predict_v2) & Pydantic v2 schemas
+│   ├── causal/                 # T-Learner CATE estimator & EMV Decision Gate
+│   ├── features/               # Ultra-fast (<1ms) intra-session NumPy feature pipeline
+│   └── telemetry/              # Non-blocking async Cloud Pub/Sub publisher
+├── tests/                      # Pytest unit & integration test suite
+├── ui/                         # Streamlit interactive dashboard simulator
+├── Dockerfile                  # Production container recipe running as 'appuser'
+├── GTM_INTEGRATION_V2.md       # Frontend & Google Tag Manager integration guide
+├── pytest.ini                  # Pytest environment configuration
+└── requirements.txt            # Production backend dependencies
+```
+
+---
+
 ## Technical Stack
 
 * **Inference Pipeline:** FastAPI, LightGBM (T-Learner), NumPy (Zero-Pandas Allocation in API path).
-* **Telemetry & Logging:** Asynchronous Google Cloud Pub/Sub $\rightarrow$ BigQuery Direct Subscription (0% data loss).
-* **Causal Libraries:** EconML / Scikit-Learn.
+* **Telemetry & Logging:** Asynchronous Google Cloud Pub/Sub $\rightarrow$ BigQuery Direct Subscription (`ml_logs.causal_predictions_log`).
+* **Causal & ML Libraries:** Scikit-Learn, LightGBM, EconML.
 * **Infrastructure:** Docker, Google Cloud Run, GitHub Actions CI/CD.
 
 ---
 
-## Quickstart
+## Quickstart & Execution
 
 ### 1. Set Up Local Environment
 ```bash
@@ -43,7 +72,57 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Run Local Development API
+### 2. Train & Export Causal Models
+```bash
+python3 notebooks/01_causal_t_learner_training.py
+```
+
+### 3. Run Automated Unit Tests
+```bash
+python3 -m pytest
+```
+
+### 4. Launch Local Development API
 ```bash
 uvicorn src.api.main:app --reload --port 8000
 ```
+*Interactive Swagger documentation live at:* `http://127.0.0.1:8000/docs`
+
+### 5. Run Streamlit UI Dashboard Simulator
+```bash
+streamlit run ui/streamlit_app.py
+```
+
+---
+
+## Production API Payload & Response Example
+
+### POST `/predict_v2` Request Body
+```json
+{
+  "visitor_type_encoded": 1,
+  "traffic_type": 2,
+  "session_duration_sec": 120.0,
+  "product_views_count": 5,
+  "cart_add_count": 1,
+  "price_sum_viewed": 150.0,
+  "time_since_last_action": 12.5
+}
+```
+
+### Synchronous Response Packet (<20ms)
+```json
+{
+  "trigger_discount": true,
+  "net_emv_dollars": 2.24,
+  "cate_uplift": 0.1712,
+  "p_control": 0.35,
+  "p_treatment": 0.5212,
+  "version": "2.0.0"
+}
+```
+
+---
+
+## Storefront Integration
+For integrating live storefronts (Shopify, WooCommerce, React/Next.js) via Google Tag Manager, refer directly to `GTM_INTEGRATION_V2.md`.
