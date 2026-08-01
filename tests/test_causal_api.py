@@ -1,6 +1,6 @@
 """
 Unit & Regression Tests for Causal Uplift Engine API & EMV Gate.
-Includes regression test for Section 5.1 AOV Proxy Bug scenario.
+Includes regression tests for Section 5.1 AOV Proxy Bug and Section 4.1 Adversarial Cart Clamping.
 """
 import pytest
 from fastapi.testclient import TestClient
@@ -9,6 +9,7 @@ from src.api.main import app
 from config.settings import settings
 from src.causal.emv_gate import evaluate_expected_monetary_value
 
+# Instantiate FastAPI TestClient
 client = TestClient(app)
 
 
@@ -34,7 +35,7 @@ def test_aov_proxy_bug_regression():
         "session_duration_sec": 120.0,
         "product_views_count": 6,
         "cart_add_count": 0,
-        "price_sum_viewed": 300.0,  # Browsed $300 worth of items
+        "price_sum_viewed": 300.0,
         "time_since_last_action": 12.5,
         "cart_value_override": None
     }
@@ -43,8 +44,7 @@ def test_aov_proxy_bug_regression():
     assert response.status_code == 200
     data = response.json()
     
-    # Verify net_emv_dollars was computed using $65 AOV (not $300)
-    assert data["net_emv_dollars"] < 8.00  # Proves $300 was NOT used as AOV multiplier!
+    assert data["net_emv_dollars"] < 8.00
 
 
 def test_predict_v2_sanitized_non_verbose_response():
@@ -58,7 +58,7 @@ def test_predict_v2_sanitized_non_verbose_response():
         "price_sum_viewed": 150.0,
         "time_since_last_action": 12.5
     }
-    response = client.post("/predict_v2", json=payload)  # Default verbose=False
+    response = client.post("/predict_v2", json=payload)
     assert response.status_code == 200
     data = response.json()
     
@@ -85,28 +85,56 @@ def test_input_bounds_validation():
 
 def test_emv_gate_math_cases():
     """5. Tests Expected Monetary Value ($) calculation logic directly."""
-    # Case A: High Uplift (Persuadable Buyer) -> Positive Net EMV -> Trigger Discount
-    trigger, emv, cate = evaluate_expected_monetary_value(
+    trigger, emv_risk, net_emv_mean, cate = evaluate_expected_monetary_value(
         p_control=0.20,
         p_treatment=0.50,
+        cate_std_err=0.05,
         aov=100.0,
         gross_margin=0.40,
         discount_rate=0.10,
-        min_emv_threshold=0.50
+        min_emv_threshold=0.50,
+        risk_lambda=0.5
     )
     assert cate == 0.30
     assert trigger is True
-    assert emv > 0.50
+    assert emv_risk > 0.50
 
-    # Case B: Zero Uplift (Organic Buyer) -> Negative Net EMV due to discount cannibalization
-    trigger_b, emv_b, cate_b = evaluate_expected_monetary_value(
+    trigger_b, emv_b, net_emv_b, cate_b = evaluate_expected_monetary_value(
         p_control=0.85,
-        p_treatment=0.85,  # Discount causes 0 extra uplift
+        p_treatment=0.85,
+        cate_std_err=0.05,
         aov=100.0,
         gross_margin=0.40,
         discount_rate=0.10,
-        min_emv_threshold=0.50
+        min_emv_threshold=0.50,
+        risk_lambda=0.5
     )
     assert cate_b == 0.0
     assert trigger_b is False
-    assert emv_b < 0.0  # Discount cost destroys profit!
+    assert emv_b < 0.0
+
+
+def test_adversarial_cart_override_clamping_regression():
+    """
+    6. REGRESSION TEST (Section 4.1 worked numbers):
+    Verifies an adversarial caller CANNOT pass cart_value_override=$9,999.99
+    on a small browsing session to artificially inflate EMV and force a discount.
+    """
+    adversarial_payload = {
+        "visitor_type_encoded": 1,
+        "traffic_type": 2,
+        "session_duration_sec": 120.0,
+        "product_views_count": 2,
+        "cart_add_count": 0,
+        "price_sum_viewed": 50.0,
+        "time_since_last_action": 12.5,
+        "cart_value_override": 9999.99  # Malicious attempt to force EMV trigger
+    }
+    
+    response = client.post("/predict_v2?verbose=true", json=adversarial_payload)
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Verifies cart_value_override was clamped to sane cap ($195.00), suppressing fake $160.00 EMV inflation
+    assert data["net_emv_dollars"] < 10.00
+    assert data["trigger_discount"] is False  # Correctly suppressed!

@@ -1,4 +1,4 @@
-name: Continuous Deployment to Cloud Run (v2.0 Causal Engine)
+name: Continuous Deployment to Cloud Run (v2.2 Hardened Causal Engine)
 
 on:
   push:
@@ -23,26 +23,27 @@ jobs:
       security-events: write
 
     steps:
+      # Pinned to exact commit SHAs with version comments
       - name: Checkout Source Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
 
       - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v2.1.8
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v2.1.4
 
       - name: Authorize Docker for Artifact Registry
         run: |
           gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@c12f4581f621e25e1140ed4367f08b5329388147 # v3.8.0
 
       - name: Build and Push Docker Image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@471d1dc42d4152e8964d422eb70d9a6f3b06e330 # v6.15.0
         with:
           context: .
           push: true
@@ -52,8 +53,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Deploy to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v2
+      - name: Deploy to Cloud Run (Enforced Auth & CORS)
+        uses: google-github-actions/deploy-cloudrun@2028e2d7d30a78c6910e0632e48dd561b064884d # v2.7.0
         with:
           service: ${{ env.SERVICE_NAME }}
           region: ${{ env.GCP_REGION }}
@@ -66,3 +67,5 @@ jobs:
             PUBSUB_TOPIC_ID=intent-telemetry-stream
             BQ_DATASET_ID=ml_logs
             BQ_TABLE_ID=causal_predictions_log
+            API_KEY=${{ secrets.API_KEY }}
+            CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}

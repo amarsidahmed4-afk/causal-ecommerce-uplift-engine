@@ -1,0 +1,30 @@
+# Python Environment & Virtualenvs
+.venv/
+venv/
+ENV/
+env/
+
+# Python Cache & Compiled Files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Pytest & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local Secrets & Settings
+.env
+.env.local
+*.json
+gha-creds-*.json
+~/gcp-sa-key.json
+
+# Heavy ML Model Artifacts (Stored in GCS)
+models/*.joblib
+
+# Jupyter Checkpoints
+.ipynb_checkpoints/

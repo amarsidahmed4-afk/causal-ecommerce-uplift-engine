@@ -1,6 +1,6 @@
 """
 T-Learner Causal Uplift Estimator.
-Loads Control and Treatment models to estimate CATE, evaluate EMV, and execute exploration policy.
+Loads Control and Treatment models to estimate CATE, evaluate Risk-Adjusted EMV, and execute exploration policy.
 """
 import os
 import random
@@ -42,7 +42,7 @@ class CausalTLearner:
 
     def predict_uplift_and_emv(self, input_vector: np.ndarray, aov: float = None) -> dict:
         """
-        Executes CATE estimation, EMV evaluation, and exploration policy on 2D NumPy array.
+        Executes CATE estimation, Risk-Adjusted EMV evaluation, and exploration policy on 2D NumPy array.
         """
         if input_vector.ndim == 1:
             input_vector = input_vector.reshape(1, -1)
@@ -57,8 +57,8 @@ class CausalTLearner:
             p_treatment = 0.52
             model_source = "fallback_heuristic"
 
-        # 2. Financial Gate Evaluation
-        trigger_discount, net_emv, cate_uplift = evaluate_expected_monetary_value(
+        # 2. Risk-Adjusted Financial Gate Evaluation (Unpacks 4 values)
+        trigger_discount, net_emv_risk, net_emv_mean, cate_uplift = evaluate_expected_monetary_value(
             p_control=p_control,
             p_treatment=p_treatment,
             aov=aov
@@ -68,14 +68,13 @@ class CausalTLearner:
         is_holdout = False
         if settings.EXPLORATION_RATE > 0.0 and random.random() < settings.EXPLORATION_RATE:
             is_holdout = True
-            # Flip decision randomly during holdout exploration
             trigger_discount = random.choice([True, False])
 
         return {
             "p_control": round(p_control, 4),
             "p_treatment": round(p_treatment, 4),
             "cate_uplift": round(cate_uplift, 4),
-            "net_emv_dollars": round(net_emv, 2),
+            "net_emv_dollars": round(net_emv_risk, 2), # Returns Risk-Adjusted EMV ($)
             "trigger_discount": trigger_discount,
             "model_source": model_source,
             "is_holdout": is_holdout
