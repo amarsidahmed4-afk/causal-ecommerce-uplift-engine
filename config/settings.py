@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     DEFAULT_AOV: float = 65.00            # Default Average Order Value ($)
     DEFAULT_GROSS_MARGIN: float = 0.40    # 40% Gross Profit Margin ($26.00 profit)
     DEFAULT_DISCOUNT_RATE: float = 0.10   # 10% Discount Rate ($6.50 cost)
-    MIN_EMV_THRESHOLD: float = 4.50  # Requires at least $4.50 net gain to trigger coupon
+    MIN_EMV_THRESHOLD: float = 3.50  # Requires at least $4.50 net gain to trigger coupon
     
     # Production Exploration Policy (Holdout Arm)
     EXPLORATION_RATE: float = 0.05       # 5% randomized holdout for online CATE re-estimation

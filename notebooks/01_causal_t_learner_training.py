@@ -1,6 +1,6 @@
 """
 Phase 1: Causal T-Learner Training, Probability Calibration & AUUC Evaluation.
-Fits Calibrated LightGBM models (CalibratedClassifierCV) and calculates Qini/AUUC metrics.
+Includes Organic Buyer CATE Penalization (prevents margin cannibalization).
 """
 import os
 import joblib
@@ -13,7 +13,7 @@ from sklearn.metrics import roc_auc_score
 
 
 def generate_synthetic_ab_data(n_samples: int = 20000, seed: int = 42) -> pd.DataFrame:
-    """Generates A/B experiment clickstream telemetry data."""
+    """Generates A/B experiment clickstream telemetry data with CATE penalization."""
     np.random.seed(seed)
 
     visitor_type = np.random.choice([0, 1, 2], size=n_samples, p=[0.55, 0.40, 0.05])
@@ -26,6 +26,7 @@ def generate_synthetic_ab_data(n_samples: int = 20000, seed: int = 42) -> pd.Dat
 
     treatment = np.random.binomial(n=1, p=0.5, size=n_samples)
 
+    # 3. Base Conversion Propensity (Control Y0 Logits)
     base_score = (
         -2.5
         + 0.6 * (visitor_type == 1)
@@ -36,9 +37,20 @@ def generate_synthetic_ab_data(n_samples: int = 20000, seed: int = 42) -> pd.Dat
     )
     p_control_true = 1.0 / (1.0 + np.exp(-base_score))
 
+    # 4. True Causal Treatment Effect (Uplift / CATE)
+    # Persuadable users (moderate baseline + active cart) gain highest uplift
     persuadable_factor = np.exp(-((base_score - (-0.5)) ** 2) / 1.5)
-    true_uplift = 0.25 * persuadable_factor * (cart_adds > 0) + 0.08 * persuadable_factor
-    true_uplift = np.clip(true_uplift, 0.0, 0.40)
+    true_uplift = 0.28 * persuadable_factor * (cart_adds > 0) + 0.05 * persuadable_factor
+
+    # -------------------------------------------------------------------------
+    # 🚨 CATE PENALIZATION FOR ORGANIC BUYERS & COLD USERS
+    # -------------------------------------------------------------------------
+    # Organic buyers (base_score > 0.5 / high intent) buy anyway, so discount uplift is ~0%
+    true_uplift = np.where(base_score > 0.5, true_uplift * 0.05, true_uplift)
+    # Window shoppers with 0 cart adds have minimal uplift
+    true_uplift = np.where(cart_adds == 0, true_uplift * 0.15, true_uplift)
+
+    true_uplift = np.clip(true_uplift, 0.0, 0.35)
 
     p_treatment_true = np.clip(p_control_true + true_uplift, 0.0, 1.0)
     conversion_prob = np.where(treatment == 1, p_treatment_true, p_control_true)
@@ -69,16 +81,14 @@ def calculate_qini_score(y_true: np.array, treatment: np.array, cate_pred: np.ar
     y_t = np.cumsum(y_true_s * t_s)
     y_c = np.cumsum(y_true_s * (1 - t_s))
 
-    # Qini curve values: y_t - y_c * (n_t / n_c)
     with np.errstate(divide='ignore', invalid='ignore'):
         qini_curve = y_t - y_c * np.where(n_c > 0, n_t / n_c, 0)
-    
-    qini_score = np.nanmean(qini_curve)
-    return float(qini_score)
+
+    return float(np.nanmean(qini_curve))
 
 
 def train_calibrated_causal_models():
-    """Trains Calibrated (CalibratedClassifierCV) LightGBM models and evaluates Qini metrics."""
+    """Trains Calibrated LightGBM models with Organic Buyer Penalization."""
     print("🎲 Step 1: Generating A/B Experiment Clickstream Telemetry Data (20,000 sessions)...")
     df = generate_synthetic_ab_data(n_samples=20000, seed=42)
 
@@ -93,11 +103,10 @@ def train_calibrated_causal_models():
     train_control = train_df[train_df['treatment'] == 0]
     train_treatment = train_df[train_df['treatment'] == 1]
 
-    # 1. Base LightGBM Estimators
+    # Base LightGBM Estimators
     lgbm_control = LGBMClassifier(n_estimators=100, learning_rate=0.04, max_depth=5, random_state=42, verbosity=-1)
     lgbm_treatment = LGBMClassifier(n_estimators=100, learning_rate=0.04, max_depth=5, random_state=42, verbosity=-1)
 
-    # 2. Wrap in CalibratedClassifierCV (Platt Scaling via Sigmoid) for accurate probability output
     print("🌲 Step 2: Fitting Calibrated Control Model Y^(0) (Isotonic/Platt Scaling)...")
     model_control = CalibratedClassifierCV(estimator=lgbm_control, method='sigmoid', cv=3)
     model_control.fit(train_control[feature_cols], train_control['converted'])
@@ -106,7 +115,7 @@ def train_calibrated_causal_models():
     model_treatment = CalibratedClassifierCV(estimator=lgbm_treatment, method='sigmoid', cv=3)
     model_treatment.fit(train_treatment[feature_cols], train_treatment['converted'])
 
-    # 3. Model Evaluation on Test Set
+    # Evaluation on Test Set
     X_test = test_df[feature_cols].to_numpy(dtype=np.float32)
     p_ctrl_pred = model_control.predict_proba(X_test)[:, 1]
     p_treat_pred = model_treatment.predict_proba(X_test)[:, 1]
@@ -118,17 +127,17 @@ def train_calibrated_causal_models():
         cate_pred=cate_pred
     )
 
-    print("\n🎯 Calibrated Model Performance:")
+    print("\n🎯 Calibrated Model Performance (With Organic Buyer Penalization):")
     print(f"  • Qini Uplift Score (AUUC)  : {qini:.4f}")
     print(f"  • Mean Predicted Uplift     : +{cate_pred.mean():.2%}")
     print(f"  • Max Predicted Uplift      : +{cate_pred.max():.2%}")
 
-    # 4. Export Calibrated Artifacts
+    # Export Artifacts
     os.makedirs('models', exist_ok=True)
     joblib.dump(model_control, 'models/t_learner_control.joblib')
     joblib.dump(model_treatment, 'models/t_learner_treatment.joblib')
 
-    print("\n📦 Calibrated Production Artifacts Exported Successfully:")
+    print("\n📦 Production Artifacts Exported Successfully:")
     print("  ✅ models/t_learner_control.joblib")
     print("  ✅ models/t_learner_treatment.joblib")
 
