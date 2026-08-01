@@ -1,19 +1,19 @@
 # Server-Side Tracking Integration Guide (GTM Server-Side & Node.js)
 
 ## Overview
-Server-Side tracking routes telemetry **server-to-server** rather than directly from the user's browser.
+Server-Side tracking routes telemetry server-to-server rather than directly from the user's browser.
 
-### Advantages of Server-Side Tracking:
-1. **100% Ad-Blocker Immunity:** Completely bypasses uBlock Origin, Brave, Privacy Badger, and browser extension blocks.
-2. **Safari ITP Compliance:** Extends cookie lifespans and bypasses Safari Intelligent Tracking Prevention limits.
-3. **Zero Mobile Latency:** Removes JavaScript processing overhead from low-end mobile devices.
+### Benefits of Server-Side Tracking
+1. Ad-Blocker Resilience: Bypasses uBlock Origin, Brave, Privacy Badger, and browser extension blocks.
+2. Safari ITP Compliance: Extends cookie lifespans and complies with Safari Intelligent Tracking Prevention limits.
+3. Mobile Latency Reduction: Removes JavaScript processing overhead from mobile devices.
 
 ---
 
 ## Architecture
 
 ```text
-[ Browser / Storefront ] ──► [ Custom Subdomain: metrics.store.com ] ──► [ Causal API Endpoint ]
+[ Browser / Storefront ] ──► [ First-Party Subdomain: metrics.store.com ] ──► [ Causal API Endpoint ]
                                 (GTM Server-Side Container)
 ```
 
@@ -21,17 +21,17 @@ Server-Side tracking routes telemetry **server-to-server** rather than directly 
 
 ## Step 1: Configure GTM Server-Side Container
 
-1. Deploy a **GTM Server-Side Container** on Google Cloud Run or Stape.io.
-2. Map a **first-party custom domain** (e.g., `metrics.yourstore.com`) to the GTM Server Container.
-3. In GTM Server-Side, create an **HTTP Request Tag**.
+1. Deploy a GTM Server-Side Container on Google Cloud Run or Stape.io.
+2. Map a first-party custom domain (e.g., `metrics.yourstore.com`) to the GTM Server Container.
+3. In GTM Server-Side, create an HTTP Request Tag.
 
 ---
 
 ## Step 2: HTTP Tag Configuration in GTM Server-Side
 
-* **Destination URL:** `https://causal-ecommerce-uplift-engine-347039794179.europe-west1.run.app/predict_v2`
-* **HTTP Method:** `POST`
-* **HTTP Headers:**
+* Destination URL: `https://YOUR_CLOUD_RUN_URL/predict_v2`
+* HTTP Method: `POST`
+* HTTP Headers:
   * `Content-Type`: `application/json`
   * `X-Tracking-Mode`: `server_side`
 
@@ -55,18 +55,16 @@ Server-Side tracking routes telemetry **server-to-server** rather than directly 
 
 ## Step 3: Server-Side Response Handling
 
-The API returns the decision payload to the GTM Server Container in <20ms:
+The API returns the decision payload to the GTM Server Container in sub-20 milliseconds:
 
 ```json
 {
   "trigger_discount": true,
-  "net_emv_dollars": 2.24,
-  "cate_uplift": 0.1712,
-  "p_control": 0.35,
-  "p_treatment": 0.5212,
-  "version": "2.0.0",
+  "model_source": "trained_artifact",
+  "is_holdout": false,
+  "version": "2.1.0",
   "tracking_mode": "server_side"
 }
 ```
 
-If `trigger_discount === true`, the GTM Server Container returns a HTTP header or cookie to the browser to display the storefront offer.
+If `trigger_discount === true`, the GTM Server Container returns an HTTP header or cookie to the browser to display the storefront offer.

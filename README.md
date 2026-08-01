@@ -1,35 +1,41 @@
-# Causal Ecommerce Uplift Engine v2.0
+# Causal Ecommerce Uplift Engine v2.1
 
-An enterprise-grade, low-latency microservice designed to maximize e-commerce gross margins using **Causal Inference (CATE Estimation)**, **Expected Monetary Value (EMV) Decision Gating**, and **Dual Client & Server-Side Tracking**.
+A low-latency microservice designed to optimize e-commerce gross margins using Causal Inference (CATE Estimation), Expected Monetary Value (EMV) Decision Gating, and Dual-Mode Telemetry.
 
-Unlike traditional propensity engines that predict *intent* (and waste discounts on organic buyers), this engine isolates the **Conditional Average Treatment Effect (CATE)**—identifying the exact subset of users whose purchasing behavior is positively incremented by an intervention.
+Unlike propensity models that predict raw purchase likelihood (and often discount organic buyers who would convert at full price), this microservice estimates the Conditional Average Treatment Effect (CATE) to identify incremental sales caused specifically by an intervention.
 
 ---
 
-## Core Architecture: Propensity vs. Causal Uplift
+## Core Architecture
 
+### Propensity vs. Causal Uplift
 $$\text{CATE } \tau(X) = \mathbb{E}[Y^{(1)} - Y^{(0)} \mid X]$$
 
-* **Traditional Propensity Engine (v1.0):** Asks *"Will this user buy?"* $\rightarrow$ Gives discounts to 80%+ intent users who were going to buy anyway (Margin Destruction).
-* **Causal Uplift Engine (v2.0):** Asks *"Will giving a discount INCREMENTALLY cause a purchase that wouldn't happen otherwise?"* $\rightarrow$ Targets only "Persuadables" to protect profit margins.
+* Propensity Models (v1.0): Estimate $P(Y=1 \mid X)$. Frequently discount high-intent buyers who convert organically.
+* Causal Uplift Models (v2.0+): Estimate $\tau(X) = P(Y^{(1)} \mid X) - P(Y^{(0)} \mid X)$. Targets persuadable sessions to protect gross margins.
+
+### Expected Monetary Value (EMV) Decision Gate
+Interventions are triggered only when the calculated Expected Monetary Value is positive:
+
+$$\text{EMV} = \left[ P(Y^{(1)}) \times (\text{AOV} \times \text{Margin} - \text{Discount Cost}) \right] - \left[ P(Y^{(0)}) \times (\text{AOV} \times \text{Margin}) \right]$$
+
+An incentive is recommended only if $\text{EMV} \ge \text{MIN\_EMV\_THRESHOLD}$ (configured via settings).
 
 ---
 
-## The EMV Decision Gate
+## Capabilities & Production Scope
 
-Interventions are triggered **only when the Expected Monetary Value is positive**:
+### Technical Capabilities
+* Inference Performance: C-contiguous 2D NumPy array execution in FastAPI, bypassing Pandas DataFrame instantiation on the critical inference path.
+* Probability Calibration: LightGBM base estimators wrapped with Platt scaling (`CalibratedClassifierCV`) to ensure predicted probabilities reflect empirical rates before entering financial formulas.
+* Dual-Mode Telemetry: Supports client-side browser dataLayer events and server-side GTM proxying.
+* Asynchronous Logging: Non-blocking Cloud Pub/Sub publishing with direct BigQuery streaming.
+* Input Validation & Security: Pydantic upper bounds on input fields, optional API key header authentication (`X-API-Key`), sanitized error responses, and customizable CORS origins.
 
-$$\text{EMV} = \left[ P(Y^{(1)}) \times (\text{AOV} \cdot \text{Margin} - \text{Discount}) \right] - \left[ P(Y^{(0)}) \times (\text{AOV} \cdot \text{Margin}) \right]$$
-
-If $\text{EMV} > \$0.50$, the API triggers the incentive tag; otherwise, it suppresses it.
-
----
-
-## Dual-Mode Telemetry (Client & Server-Side Tracking)
-
-To maximize data quality and bypass client-side ad-blockers, v2.0 supports two tracking architectures:
-1. **Client-Side DataLayer Tracking:** Ultra-fast sub-20ms browser execution for immediate dynamic popups/modals (`GTM_INTEGRATION_V2.md`).
-2. **GTM Server-Side Proxy Tracking:** Server-to-server HTTP proxying via first-party subdomains (`metrics.merchantstore.com`) for **100% ad-blocker immunity and Safari ITP compliance** (`GTM_SERVER_SIDE_INTEGRATION.md`).
+### Production Prerequisites
+The model artifacts provided in this repository are trained on semi-synthetic A/B clickstream data (`notebooks/01_causal_t_learner_training.py`) to demonstrate pipeline functionality. Before deploying to live traffic with real marketing budgets:
+1. The T-Learner must be retrained on real historical randomized A/B experiment data or logged online holdout streams.
+2. Store economics (AOV, Gross Margin %, Discount Rate, and MIN_EMV_THRESHOLD) must be tuned to match the merchant's unit economics.
 
 ---
 
@@ -39,102 +45,72 @@ To maximize data quality and bypass client-side ad-blockers, v2.0 supports two t
 causal-ecommerce-uplift-engine/
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml          # CI/CD pipeline to Cloud Run with Buildx caching
+│       └── deploy.yml          # CI/CD deployment to Google Cloud Run
 ├── config/
-│   └── settings.py             # Type-safe Pydantic environment configuration
-├── models/                     # Serialized LightGBM Causal Artifacts (.joblib)
+│   └── settings.py             # Type-safe environment settings
+├── models/                     # Serialized Causal LightGBM artifacts (.joblib)
 │   ├── t_learner_control.joblib
 │   └── t_learner_treatment.joblib
 ├── notebooks/
-│   ├── 01_causal_t_learner_training.py  # A/B dataset generation & model trainer
-│   └── 02_shopify_store_simulation.py   # Live storefront multi-persona simulator
+│   ├── 01_causal_t_learner_training.py  # A/B dataset generation, calibration & training
+│   ├── 02_shopify_store_simulation.py   # Multi-persona traffic simulation
+│   └── 03_merchant_onboarding_test.py   # End-to-end merchant onboarding protocol
 ├── src/
-│   ├── api/                    # FastAPI routes (/predict_v2) & Pydantic v2 schemas
+│   ├── api/                    # FastAPI routes (/predict_v2) & Pydantic schemas
 │   ├── causal/                 # T-Learner CATE estimator & EMV Decision Gate
-│   ├── features/               # Ultra-fast (<1ms) intra-session NumPy feature pipeline
-│   └── telemetry/              # Non-blocking async Cloud Pub/Sub publisher
-├── tests/                      # Pytest unit & integration test suite
-├── ui/                         # Streamlit interactive dashboard simulator
-├── Dockerfile                  # Production container recipe running as 'appuser'
-├── GTM_INTEGRATION_V2.md       # Client-side browser & GTM integration guide
-├── GTM_SERVER_SIDE_INTEGRATION.md # Server-side GTM container integration guide
-├── pytest.ini                  # Pytest environment configuration
-└── requirements.txt            # Production backend dependencies
+│   ├── features/               # Intra-session NumPy feature pipeline
+│   └── telemetry/              # Async Cloud Pub/Sub publisher
+├── tests/                      # Pytest unit & regression test suite
+├── ui/                         # Streamlit interactive dashboard
+├── Dockerfile                  # Container definition (runs as appuser)
+├── GTM_INTEGRATION_V2.md       # Client-side integration guide
+├── GTM_SERVER_SIDE_INTEGRATION.md # Server-side integration guide
+├── pytest.ini                  # Pytest configuration
+└── requirements.txt            # Production dependencies
 ```
 
 ---
 
-## Technical Stack
+## Quickstart
 
-* **Inference Pipeline:** FastAPI, LightGBM (T-Learner), NumPy (Zero-Pandas Allocation in API path).
-* **Telemetry & Logging:** Asynchronous Google Cloud Pub/Sub $\rightarrow$ BigQuery Direct Subscription (`ml_logs.causal_predictions_log`).
-* **Causal & ML Libraries:** Scikit-Learn, LightGBM, EconML.
-* **Infrastructure:** Docker, Google Cloud Run, GitHub Actions CI/CD.
-
----
-
-## Quickstart & Execution
-
-### 1. Set Up Local Environment
+### 1. Environment Setup
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Train & Export Causal Models
+### 2. Model Calibration & Training
 ```bash
 python3 notebooks/01_causal_t_learner_training.py
 ```
 
-### 3. Run Automated Unit Tests
+### 3. Test Suite Execution
 ```bash
 python3 -m pytest
 ```
 
-### 4. Launch Local Development API
+### 4. Run Development API
 ```bash
 uvicorn src.api.main:app --reload --port 8000
 ```
-*Interactive Swagger documentation live at:* `http://127.0.0.1:8000/docs`
+Swagger UI available at `http://127.0.0.1:8000/docs`
 
-### 5. Run Live Shopify Storefront Traffic Simulation
+### 5. Run Merchant Simulation
 ```bash
-python3 notebooks/02_shopify_store_simulation.py
+python3 notebooks/03_merchant_onboarding_test.py
 ```
 
-### 6. Run Streamlit UI Dashboard Simulator
+### 6. Run Streamlit Dashboard
 ```bash
 streamlit run ui/streamlit_app.py
 ```
 
 ---
 
-## Live Shopify Storefront Traffic Simulation
+## API Payload Specification
 
-The repository includes an end-to-end storefront simulator (`notebooks/02_shopify_store_simulation.py`) that models real-time customer browsing across 3 merchant buyer personas:
-1. **Persuadable Buyer:** Active cart, price sensitive $\rightarrow$ High CATE Uplift $\rightarrow$ **TRIGGER DISCOUNT**.
-2. **Organic Buyer:** Loyal returning customer $\rightarrow$ High Baseline Propensity $\rightarrow$ **SUPPRESS DISCOUNT** (Protects Profit Margin).
-3. **Window Shopper:** Bounces quickly $\rightarrow$ Low Uplift/Baseline $\rightarrow$ **SUPPRESS DISCOUNT**.
-
-### Sample Merchant Executive Summary Output
-```text
-===========================================================================
- 📊 SHOPIFY MERCHANT EXECUTIVE FINANCIAL SUMMARY 
-===========================================================================
- Total Customer Sessions Analyzed  : 30
- Discounts Triggered (Persuadables): 11 (36.7%)
- Discounts Suppressed (Organic/Cold): 19 (63.3%)
- Profit Margin Saved               : $85.00 (Prevented cannibalization on organic buyers)
- Estimated Net Dollar Lift ($)      : +$38.42
-===========================================================================
-```
-
----
-
-## Production API Payload & Response Example
-
-### POST `/predict_v2` Request Body
+### Request Body (`POST /predict_v2`)
 ```json
 {
   "visitor_type_encoded": 1,
@@ -144,25 +120,25 @@ The repository includes an end-to-end storefront simulator (`notebooks/02_shopif
   "cart_add_count": 1,
   "price_sum_viewed": 150.0,
   "time_since_last_action": 12.5,
-  "tracking_mode": "server_side"
+  "tracking_mode": "client_side"
 }
 ```
 
-### Synchronous Response Packet (<20ms)
+### Response Body
 ```json
 {
   "trigger_discount": true,
-  "net_emv_dollars": 2.24,
-  "cate_uplift": 0.1712,
-  "p_control": 0.35,
-  "p_treatment": 0.5212,
-  "version": "2.0.0",
-  "tracking_mode": "server_side"
+  "model_source": "trained_artifact",
+  "is_holdout": false,
+  "version": "2.1.0",
+  "tracking_mode": "client_side"
 }
 ```
 
+*(Note: Internal values such as `cate_uplift` and `net_emv_dollars` are hidden by default to prevent client-side inspection. Pass `?verbose=true` on authorized requests to include debug fields.)*
+
 ---
 
-## Storefront Integration Guides
-* **Client-Side Browser Integration:** Refer to `GTM_INTEGRATION_V2.md`.
-* **Server-Side Container Integration (100% Ad-Blocker Immunity):** Refer to `GTM_SERVER_SIDE_INTEGRATION.md`.
+## Integration Documentation
+* Client-Side Integration: `GTM_INTEGRATION_V2.md`
+* Server-Side Integration: `GTM_SERVER_SIDE_INTEGRATION.md`
