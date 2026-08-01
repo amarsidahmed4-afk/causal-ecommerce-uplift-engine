@@ -1,43 +1,42 @@
+"""
+Centralized Application Configuration.
+Reads automatically from environment variables or .env file.
+"""
 import os
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """
-    Centralized Application Configuration.
-    Reads automatically from environment variables or .env file.
-    """
-    # -------------------------------------------------------------------------
-    # 1. Application Metadata
-    # -------------------------------------------------------------------------
+    # Application Metadata
     PROJECT_NAME: str = "Causal Ecommerce Uplift Engine"
-    VERSION: str = "2.0.0"
+    VERSION: str = "2.1.0"
     DEBUG: bool = False
 
-    # -------------------------------------------------------------------------
-    # 2. Google Cloud Platform Infrastructure
-    # -------------------------------------------------------------------------
-    GCP_PROJECT_ID: str = "gtm-m4299zzd-nti4m"
-    GCP_REGION: str = "europe-west1"
-    PUBSUB_TOPIC_ID: str = "intent-telemetry-stream"
-    BQ_DATASET_ID: str = "ml_logs"
-    BQ_TABLE_ID: str = "causal_predictions_log"
+    # Security & Access Control
+    API_KEY: Optional[str] = None  # If set, enforces X-API-Key header verification
+    CORS_ORIGINS: list[str] = ["*"] # Set to specific storefront domain in production
 
-    # -------------------------------------------------------------------------
-    # 3. Financial & Expected Monetary Value (EMV) Parameters
-    # -------------------------------------------------------------------------
-    DEFAULT_AOV: float = 65.00            # Average Order Value ($)
-    DEFAULT_GROSS_MARGIN: float = 0.40    # 40% Gross Profit Margin
+    # Infrastructure Config (Environment Variable Overrides Recommended)
+    GCP_PROJECT_ID: str = os.getenv("GCP_PROJECT_ID", "gtm-m4299zzd-nti4m")
+    GCP_REGION: str = os.getenv("GCP_REGION", "europe-west1")
+    PUBSUB_TOPIC_ID: str = os.getenv("PUBSUB_TOPIC_ID", "intent-telemetry-stream")
+    BQ_DATASET_ID: str = os.getenv("BQ_DATASET_ID", "ml_logs")
+    BQ_TABLE_ID: str = os.getenv("BQ_TABLE_ID", "causal_predictions_log")
+
+    # Financial & EMV Decision Parameters
+    DEFAULT_AOV: float = 65.00            # Default Average Order Value ($)
+    DEFAULT_GROSS_MARGIN: float = 0.40    # 40% Gross Profit Margin ($26.00 profit)
     DEFAULT_DISCOUNT_RATE: float = 0.10   # 10% Discount Rate ($6.50 cost)
-    MIN_EMV_THRESHOLD: float = 0.50      # Minimum net $ gain to trigger intervention
+    MIN_EMV_THRESHOLD: float = 4.50  # Requires at least $4.50 net gain to trigger coupon
+    
+    # Production Exploration Policy (Holdout Arm)
+    EXPLORATION_RATE: float = 0.05       # 5% randomized holdout for online CATE re-estimation
 
-    # -------------------------------------------------------------------------
-    # 4. Model Artifact Paths
-    # -------------------------------------------------------------------------
+    # Model Artifact Paths
     MODEL_CONTROL_PATH: str = "models/t_learner_control.joblib"
     MODEL_TREATMENT_PATH: str = "models/t_learner_treatment.joblib"
 
-    # Configuration for .env file loading
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -45,5 +44,4 @@ class Settings(BaseSettings):
     )
 
 
-# Instantiate global settings singleton
 settings = Settings()

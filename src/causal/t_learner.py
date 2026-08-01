@@ -1,8 +1,9 @@
 """
 T-Learner Causal Uplift Estimator.
-Loads Control and Treatment models to estimate CATE and evaluate EMV.
+Loads Control and Treatment models to estimate CATE, evaluate EMV, and execute exploration policy.
 """
 import os
+import random
 import joblib
 import numpy as np
 from config.settings import settings
@@ -20,40 +21,41 @@ class CausalTLearner:
         self.control_path = control_path or settings.MODEL_CONTROL_PATH
         self.treatment_path = treatment_path or settings.MODEL_TREATMENT_PATH
         
-        self.model_control = self._load_model_artifact(self.control_path, "Control")
-        self.model_treatment = self._load_model_artifact(self.treatment_path, "Treatment")
+        self.model_control, self.control_loaded = self._load_model_artifact(self.control_path, "Control")
+        self.model_treatment, self.treatment_loaded = self._load_model_artifact(self.treatment_path, "Treatment")
+        
+        self.is_fallback_mode = not (self.control_loaded and self.treatment_loaded)
 
-    def _load_model_artifact(self, filepath: str, model_name: str):
-        """Loads serialized model artifact or returns None for mock execution."""
+    def _load_model_artifact(self, filepath: str, model_name: str) -> tuple[object, bool]:
+        """Loads serialized model artifact and returns status boolean."""
         if os.path.exists(filepath):
-            print(f"✅ Loaded {model_name} Causal Model from: {filepath}")
-            return joblib.load(filepath)
+            try:
+                model = joblib.load(filepath)
+                print(f"✅ Loaded {model_name} Causal Model from: {filepath}")
+                return model, True
+            except Exception as e:
+                print(f"❌ Error loading {model_name} model artifact: {e}")
+                return None, False
         else:
-            print(f"⚠️ {model_name} Model file not found at '{filepath}'. Using baseline fallback mode.")
-            return None
+            print(f"⚠️ {model_name} Model file not found at '{filepath}'. Fallback mode active.")
+            return None, False
 
     def predict_uplift_and_emv(self, input_vector: np.ndarray, aov: float = None) -> dict:
         """
-        Executes CATE estimation and EMV calculation on a 2D NumPy array.
-
-        Args:
-            input_vector: 2D NumPy array shape (1, n_features)
-            aov: Optional custom Average Order Value for this user's cart
-
-        Returns:
-            dict containing p_control, p_treatment, cate_uplift, net_emv, trigger_discount
+        Executes CATE estimation, EMV evaluation, and exploration policy on 2D NumPy array.
         """
         if input_vector.ndim == 1:
             input_vector = input_vector.reshape(1, -1)
 
-        # 1. Inference Execution (Uses real models if loaded, or fallback heuristic for dev/testing)
-        if self.model_control and self.model_treatment:
+        # 1. Inference Execution
+        if not self.is_fallback_mode:
             p_control = float(self.model_control.predict_proba(input_vector)[:, 1][0])
             p_treatment = float(self.model_treatment.predict_proba(input_vector)[:, 1][0])
+            model_source = "trained_artifact"
         else:
-            # Fallback heuristic for testing before models are trained
             p_control = 0.35
             p_treatment = 0.52
+            model_source = "fallback_heuristic"
 
         # 2. Financial Gate Evaluation
         trigger_discount, net_emv, cate_uplift = evaluate_expected_monetary_value(
@@ -62,10 +64,19 @@ class CausalTLearner:
             aov=aov
         )
 
+        # 3. Exploration Policy (Epsilon-Greedy Holdout Arm for Ongoing Online CATE Re-estimation)
+        is_holdout = False
+        if settings.EXPLORATION_RATE > 0.0 and random.random() < settings.EXPLORATION_RATE:
+            is_holdout = True
+            # Flip decision randomly during holdout exploration
+            trigger_discount = random.choice([True, False])
+
         return {
             "p_control": round(p_control, 4),
             "p_treatment": round(p_treatment, 4),
             "cate_uplift": round(cate_uplift, 4),
             "net_emv_dollars": round(net_emv, 2),
-            "trigger_discount": trigger_discount
+            "trigger_discount": trigger_discount,
+            "model_source": model_source,
+            "is_holdout": is_holdout
         }

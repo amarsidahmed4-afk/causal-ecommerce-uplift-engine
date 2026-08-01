@@ -1,10 +1,6 @@
 """
 Shopify Merchant End-to-End Onboarding & Live Testing Protocol.
-Simulates the complete onboarding journey of a Shopify Store Owner:
-  Phase 1: Merchant Store Economics Configuration
-  Phase 2: API & Causal Engine Connectivity Probe
-  Phase 3: Storefront Customer Journey Telemetry Stream
-  Phase 4: BigQuery Telemetry Ingestion Audit & ROI Financial Certification
+Simulates the complete onboarding journey of a Shopify Store Owner.
 """
 import os
 import sys
@@ -30,7 +26,7 @@ def run_merchant_onboarding_test():
     print("\n--- PHASE 1: STORE ECONOMICS CONFIGURATION ---")
     store_name = "UrbanThreads Apparel (Shopify Store)"
     aov = 95.00          # Average Order Value ($)
-    gross_margin = 0.45  # 45% Gross Profit Margin ($42.75 gross profit/sale)
+    gross_margin = 0.45  # 45% Gross Profit Margin ($42.75 gross profit per sale)
     discount_rate = 0.10 # 10% Discount Coupon ($9.50 cost)
     discount_cost = aov * discount_rate
 
@@ -50,6 +46,7 @@ def run_merchant_onboarding_test():
             h_data = health_res.json()
             print(f" ✅ API Health Probe   : 200 OK ({h_data['project']} v{h_data['version']})")
             print(f" ✅ Target GCP Project : {h_data['gcp_project_id']}")
+            print(f" ✅ Model Status       : {'Loaded (.joblib)' if h_data.get('model_loaded') else 'Fallback Mode'}")
         else:
             print(f" ❌ Health Check Failed: {health_res.status_code}")
             return
@@ -108,15 +105,16 @@ def run_merchant_onboarding_test():
         }
 
         t0 = time.time()
-        res = requests.post(f"{API_URL}/predict_v2", json=payload, timeout=5)
+        # Pass verbose=true to request internal financial metrics for testing
+        res = requests.post(f"{API_URL}/predict_v2?verbose=true", json=payload, timeout=5)
         lat_ms = (time.time() - t0) * 1000
 
         if res.status_code == 200:
             data = res.json()
             trigger = data["trigger_discount"]
-            emv = data["net_emv_dollars"]
-            cate = data["cate_uplift"]
-            p_ctrl = data["p_control"]
+            emv = data.get("net_emv_dollars") or 0.0
+            cate = data.get("cate_uplift") or 0.0
+            p_ctrl = data.get("p_control") or 0.35
 
             total_emv += emv
             action_str = "🔥 TRIGGER 10% COUPON" if trigger else "🧊 SUPPRESS COUPON"

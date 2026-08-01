@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from config.settings import settings
 
-API_URL = "http://127.0.0.1:8000/predict_v2"
+API_URL = "http://127.0.0.1:8000/predict_v2?verbose=true"
 
 # Merchant Store Economics
 MERCHANT_AOV = 85.00          # Average Order Value ($)
@@ -94,9 +94,9 @@ def run_shopify_simulation(num_sessions: int = 30):
             if res.status_code == 200:
                 data = res.json()
                 trigger = data["trigger_discount"]
-                emv = data["net_emv_dollars"]
-                cate = data["cate_uplift"]
-                p_ctrl = data["p_control"]
+                emv = data.get("net_emv_dollars") or 0.0
+                cate = data.get("cate_uplift") or 0.0
+                p_ctrl = data.get("p_control") or 0.35
 
                 stats["total_sessions"] += 1
                 stats["estimated_net_emv_dollars"] += emv
