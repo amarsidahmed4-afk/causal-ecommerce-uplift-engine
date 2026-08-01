@@ -23,31 +23,26 @@ jobs:
       security-events: write
 
     steps:
-      # Step 1: Secure checkout using pinned commit SHA
       - name: Checkout Source Code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v4
 
-      # Step 2: Authenticate with Google Cloud
       - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # Step 3: Configure Cloud SDK and Docker Auth for Artifact Registry
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        uses: google-github-actions/setup-gcloud@v2
 
       - name: Authorize Docker for Artifact Registry
         run: |
           gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
-      # Step 4: Set up Docker Buildx for GitHub Actions caching
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Step 5: Build and Push Docker Image with GHA Caching
       - name: Build and Push Docker Image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -57,9 +52,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Step 6: Deploy to Google Cloud Run
       - name: Deploy to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@2028e2d7d30a78c6910e0632e48dd561b064884d # v3.0.1
+        uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: ${{ env.SERVICE_NAME }}
           region: ${{ env.GCP_REGION }}
