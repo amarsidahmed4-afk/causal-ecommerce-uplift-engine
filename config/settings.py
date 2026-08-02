@@ -3,7 +3,9 @@ Centralized Application Configuration.
 Reads automatically from environment variables or .env file.
 """
 import os
+import json
 from typing import Optional
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,8 +16,24 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # Security & Access Control
-    API_KEY: Optional[str] = os.getenv("API_KEY", None) # If configured, enforces X-API-Key header verification
-    CORS_ORIGINS: list[str] = ["*"]                     # Set to specific storefront domain in production
+    API_KEY: Optional[str] = os.getenv("API_KEY", None)
+    CORS_ORIGINS: list[str] = ["*"]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v):
+        """Safely parses string or list environment variables for CORS_ORIGINS."""
+        if isinstance(v, str):
+            v_str = v.strip()
+            if not v_str:
+                return ["*"] # Default to wildcard if empty string is passed
+            if v_str.startswith("[") and v_str.endswith("]"):
+                try:
+                    return json.loads(v_str)
+                except Exception:
+                    pass
+            return [i.strip() for i in v_str.split(",") if i.strip()]
+        return v
 
     # Infrastructure Config
     GCP_PROJECT_ID: str = os.getenv("GCP_PROJECT_ID", "gtm-m4299zzd-nti4m")
