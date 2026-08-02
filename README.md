@@ -1,8 +1,8 @@
-# Causal Ecommerce Uplift Engine v2.1
+# Causal Ecommerce Uplift Engine v2.2
 
-A low-latency microservice designed to optimize e-commerce gross margins using Causal Inference (CATE Estimation), Expected Monetary Value (EMV) Decision Gating, and Dual-Mode Telemetry.
+A low-latency microservice designed to optimize e-commerce gross margins using Causal Inference (CATE Estimation), Risk-Adjusted Expected Monetary Value (EMV) Decision Gating, and Dual-Mode Telemetry.
 
-Unlike propensity models that predict raw purchase likelihood (and often discount organic buyers who would convert at full price), this microservice estimates the Conditional Average Treatment Effect (CATE) to identify incremental sales caused specifically by an intervention.
+Unlike propensity models that predict raw purchase likelihood (and often discount organic buyers who convert at full price), this microservice estimates the Conditional Average Treatment Effect (CATE) to identify incremental sales caused specifically by an intervention.
 
 ---
 
@@ -14,12 +14,12 @@ $$\text{CATE } \tau(X) = \mathbb{E}[Y^{(1)} - Y^{(0)} \mid X]$$
 * Propensity Models (v1.0): Estimate $P(Y=1 \mid X)$. Frequently discount high-intent buyers who convert organically.
 * Causal Uplift Models (v2.0+): Estimate $\tau(X) = P(Y^{(1)} \mid X) - P(Y^{(0)} \mid X)$. Targets persuadable sessions to protect gross margins.
 
-### Expected Monetary Value (EMV) Decision Gate
-Interventions are triggered only when the calculated Expected Monetary Value is positive:
+### Risk-Adjusted Expected Monetary Value (EMV) Decision Gate
+Interventions are triggered only when the calculated Risk-Adjusted Expected Monetary Value is positive:
 
-$$\text{EMV} = \left[ P(Y^{(1)}) \times (\text{AOV} \times \text{Margin} - \text{Discount Cost}) \right] - \left[ P(Y^{(0)}) \times (\text{AOV} \times \text{Margin}) \right]$$
+$$\text{EMV}_{\text{risk}} = \left[ P(Y^{(1)}) \times (\text{AOV} \times \text{Margin} - \text{Discount Cost}) \right] - \left[ P(Y^{(0)}) \times (\text{AOV} \times \text{Margin}) \right] - \lambda \cdot \sigma_{\text{CATE}}$$
 
-An incentive is recommended only if $$\text{EMV} \ge \text{MIN\_EMV\_THRESHOLD}$$ (configured via settings).
+An incentive is recommended only if $\text{EMV}_{\text{risk}} \ge \text{MIN\_EMV\_THRESHOLD}$ (configured via settings, default $3.50).
 
 ---
 
@@ -27,10 +27,12 @@ An incentive is recommended only if $$\text{EMV} \ge \text{MIN\_EMV\_THRESHOLD}$
 
 ### Technical Capabilities
 * Inference Performance: C-contiguous 2D NumPy array execution in FastAPI, bypassing Pandas DataFrame instantiation on the critical inference path.
-* Probability Calibration: LightGBM base estimators wrapped with Platt scaling (`CalibratedClassifierCV`) to ensure predicted probabilities reflect empirical rates before entering financial formulas.
-* Dual-Mode Telemetry: Supports client-side browser dataLayer events and server-side GTM proxying.
-* Asynchronous Logging: Non-blocking Cloud Pub/Sub publishing with direct BigQuery streaming.
-* Input Validation & Security: Pydantic upper bounds on input fields, optional API key header authentication (`X-API-Key`), sanitized error responses, and customizable CORS origins.
+* Calibrated Model Artifacts: LightGBM base estimators wrapped with Platt scaling (`CalibratedClassifierCV`) shipped directly inside the Docker container (`models/*.joblib`).
+* Adversarial Protection: Clamps `cart_value_override` to prevent malicious callers from passing inflated order totals to force discount triggers.
+* Dual-Mode Telemetry: Supports client-side browser dataLayer events and server-side GTM proxying (`X-Tracking-Mode`).
+* Asynchronous Logging: Non-blocking Cloud Pub/Sub publishing with direct BigQuery streaming and exponential backoff retries (`google.api_core.retry.Retry`).
+* Offline Policy Evaluation: Implements Doubly Robust (DR) policy value estimation and Inverse Propensity Weighting (IPW) in `notebooks/04_policy_evaluation.py`.
+* Exploration Policy: Configurable 5% randomized holdout arm (`EXPLORATION_RATE`) to continuously collect unbiased online experiment streams (`is_holdout=true`).
 
 ### Production Prerequisites
 The model artifacts provided in this repository are trained on semi-synthetic A/B clickstream data (`notebooks/01_causal_t_learner_training.py`) to demonstrate pipeline functionality. Before deploying to live traffic with real marketing budgets:
@@ -45,7 +47,7 @@ The model artifacts provided in this repository are trained on semi-synthetic A/
 causal-ecommerce-uplift-engine/
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml          # CI/CD deployment to Google Cloud Run
+│       └── deploy.yml          # CI/CD deployment to Google Cloud Run with SHA pinning
 ├── config/
 │   └── settings.py             # Type-safe environment settings
 ├── models/                     # Serialized Causal LightGBM artifacts (.joblib)
@@ -54,7 +56,8 @@ causal-ecommerce-uplift-engine/
 ├── notebooks/
 │   ├── 01_causal_t_learner_training.py  # A/B dataset generation, calibration & training
 │   ├── 02_shopify_store_simulation.py   # Multi-persona traffic simulation
-│   └── 03_merchant_onboarding_test.py   # End-to-end merchant onboarding protocol
+│   ├── 03_merchant_onboarding_test.py   # End-to-end merchant onboarding protocol
+│   └── 04_policy_evaluation.py         # Doubly Robust (DR) & IPW offline policy evaluation
 ├── src/
 │   ├── api/                    # FastAPI routes (/predict_v2) & Pydantic schemas
 │   ├── causal/                 # T-Learner CATE estimator & EMV Decision Gate
@@ -90,18 +93,23 @@ python3 notebooks/01_causal_t_learner_training.py
 python3 -m pytest
 ```
 
-### 4. Run Development API
+### 4. Offline Policy Evaluation
+```bash
+python3 notebooks/04_policy_evaluation.py
+```
+
+### 5. Run Development API
 ```bash
 uvicorn src.api.main:app --reload --port 8000
 ```
 Swagger UI available at `http://127.0.0.1:8000/docs`
 
-### 5. Run Merchant Simulation
+### 6. Run Merchant Onboarding Simulation
 ```bash
 python3 notebooks/03_merchant_onboarding_test.py
 ```
 
-### 6. Run Streamlit Dashboard
+### 7. Run Streamlit Dashboard
 ```bash
 streamlit run ui/streamlit_app.py
 ```
@@ -130,7 +138,7 @@ streamlit run ui/streamlit_app.py
   "trigger_discount": true,
   "model_source": "trained_artifact",
   "is_holdout": false,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "tracking_mode": "client_side"
 }
 ```

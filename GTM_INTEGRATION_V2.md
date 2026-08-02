@@ -1,9 +1,9 @@
-# Real-Time Causal Uplift Engine v2.1: GTM & Storefront Integration Guide
+# Real-Time Causal Uplift Engine v2.2: GTM & Storefront Integration Guide
 
 ## Overview
-This document provides technical instructions for integrating an e-commerce storefront (Shopify, WooCommerce, custom web application) with the Causal Ecommerce Uplift Engine v2.1 via Google Tag Manager (GTM).
+This document provides technical instructions for integrating an e-commerce storefront (Shopify, WooCommerce, custom web application) with the Causal Ecommerce Uplift Engine v2.2 via Google Tag Manager (GTM).
 
-The microservice evaluates Conditional Average Treatment Effect (CATE) and Expected Monetary Value (EMV). The API returns `trigger_discount: true` only when offering an incentive yields positive net expected profit after accounting for discount costs and gross margins.
+The microservice evaluates Conditional Average Treatment Effect (CATE) and Risk-Adjusted Expected Monetary Value (EMV). The API returns `trigger_discount: true` only when offering an incentive yields positive net expected profit after accounting for discount costs, gross margins, and prediction variance.
 
 ---
 
@@ -114,7 +114,7 @@ GTM triggers listening for `trigger_causal_incentive` can execute:
   "trigger_discount": true,
   "model_source": "trained_artifact",
   "is_holdout": false,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "tracking_mode": "client_side"
 }
 ```

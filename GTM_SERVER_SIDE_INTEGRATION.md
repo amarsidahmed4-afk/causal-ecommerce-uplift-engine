@@ -62,7 +62,7 @@ The API returns the decision payload to the GTM Server Container in sub-20 milli
   "trigger_discount": true,
   "model_source": "trained_artifact",
   "is_holdout": false,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "tracking_mode": "server_side"
 }
 ```
