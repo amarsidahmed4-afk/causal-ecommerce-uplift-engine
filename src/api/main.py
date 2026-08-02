@@ -22,9 +22,10 @@ app = FastAPI(
     description="Hardened Causal Uplift & Risk-Adjusted EMV Decision Microservice"
 )
 
+# CORS Configuration read safely from settings property
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -76,11 +77,6 @@ async def predict_causal_intent(
         input_vector = IntraSessionFeatureExtractor.extract_feature_vector(event)
         derived_metrics = IntraSessionFeatureExtractor.compute_derived_session_metrics(event)
 
-        # ---------------------------------------------------------------------
-        # ADVERSARIAL CART OVERRIDE CLAMPING (Section 4.1 Fix)
-        # Prevents caller from passing cart_value_override=9999.99 to force a discount.
-        # Cart override cannot exceed MAX_CART_OVERRIDE_MULTIPLIER * max(AOV, price_sum_viewed).
-        # ---------------------------------------------------------------------
         if event.cart_value_override is not None and event.cart_value_override > 0:
             max_sane_cart_cap = max(
                 settings.DEFAULT_AOV * settings.MAX_CART_OVERRIDE_MULTIPLIER,
@@ -90,7 +86,6 @@ async def predict_causal_intent(
         else:
             effective_aov = settings.DEFAULT_AOV
 
-        # Execute Causal Uplift & Risk-Adjusted EMV Gate
         result = causal_engine.predict_uplift_and_emv(
             input_vector=input_vector,
             aov=effective_aov

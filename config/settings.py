@@ -5,7 +5,6 @@ Reads automatically from environment variables or .env file.
 import os
 import json
 from typing import Optional
-from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,23 +16,22 @@ class Settings(BaseSettings):
 
     # Security & Access Control
     API_KEY: Optional[str] = os.getenv("API_KEY", None)
-    CORS_ORIGINS: list[str] = ["*"]
+    
+    # Typed as str so pydantic_settings never attempts json.loads("") on empty env vars
+    CORS_ORIGINS: str = "*"
 
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def assemble_cors_origins(cls, v):
-        """Safely parses string or list environment variables for CORS_ORIGINS."""
-        if isinstance(v, str):
-            v_str = v.strip()
-            if not v_str:
-                return ["*"] # Default to wildcard if empty string is passed
-            if v_str.startswith("[") and v_str.endswith("]"):
-                try:
-                    return json.loads(v_str)
-                except Exception:
-                    pass
-            return [i.strip() for i in v_str.split(",") if i.strip()]
-        return v
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Safely parses empty strings, CSVs, or JSON lists into a Python list."""
+        raw = self.CORS_ORIGINS.strip() if self.CORS_ORIGINS else ""
+        if not raw or raw == "*":
+            return ["*"]
+        if raw.startswith("[") and raw.endswith("]"):
+            try:
+                return json.loads(raw)
+            except Exception:
+                pass
+        return [i.strip() for i in raw.split(",") if i.strip()]
 
     # Infrastructure Config
     GCP_PROJECT_ID: str = os.getenv("GCP_PROJECT_ID", "gtm-m4299zzd-nti4m")
