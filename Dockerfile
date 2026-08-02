@@ -19,12 +19,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# 5. Copy Application Source Code & Configuration
+# 5. Copy Application Source Code, Configuration & Model Artifacts
 COPY src/ ./src/
 COPY config/ ./config/
+COPY models/ ./models/
 
-# Create models and tmp directory for runtime artifact storage
-RUN mkdir -p models /tmp
+# Create tmp directory for runtime operations
+RUN mkdir -p /tmp
 
 # 6. Create Non-Privileged User for Enterprise Security
 RUN adduser --disabled-password --gecos "" appuser \
@@ -34,5 +35,5 @@ USER appuser
 
 EXPOSE 8080
 
-# 7. Start Low-Latency Uvicorn Server
-CMD ["sh", "-c", "uvicorn src.api.main:app --host 0.0.0.0 --port ${PORT}"]
+# 7. Direct Executable Entrypoint
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8080"]
