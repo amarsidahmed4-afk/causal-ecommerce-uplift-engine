@@ -34,13 +34,23 @@ app.add_middleware(
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 async def verify_api_key(api_key: Optional[str] = Security(api_key_header)):
-    """Enforces API Key verification if settings.API_KEY is configured."""
-    if settings.API_KEY:
-        if not api_key or api_key != settings.API_KEY:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unauthorized: Invalid or missing API Key"
-            )
+    """Enforces API Key verification.
+    
+    Raises:
+        HTTPException: 503 if server authentication is not configured.
+        HTTPException: 401 if the provided API key is invalid or missing.
+    """
+    if not settings.API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Server authentication not configured"
+        )
+    
+    if not api_key or api_key != settings.API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized: Invalid or missing API Key"
+        )
     return api_key
 
 causal_engine = CausalTLearner()
@@ -72,6 +82,13 @@ async def predict_causal_intent(
     Clamps adversarial cart_value_override inputs to prevent spoofed discount triggers.
     """
     try:
+        # Clamp adversarial inputs to reasonable maximums based on training data distribution
+        event.session_duration_sec = min(event.session_duration_sec, 1000)
+        event.product_views_count = min(event.product_views_count, 50)
+        event.cart_add_count = min(event.cart_add_count, 20)
+        event.price_sum_viewed = min(event.price_sum_viewed, 8000)
+        event.time_since_last_action = min(event.time_since_last_action, 300)
+
         resolved_tracking_mode = x_tracking_mode or event.tracking_mode or "client_side"
 
         input_vector = IntraSessionFeatureExtractor.extract_feature_vector(event)

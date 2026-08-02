@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # Security & Access Control
-    API_KEY: Optional[str] = os.getenv("API_KEY", None)
+    API_KEY: str = os.getenv("API_KEY", "local-dev-key-not-for-prod")
     
     # Typed as str so pydantic_settings never attempts json.loads("") on empty env vars
     CORS_ORIGINS: str = "*"
@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     DEFAULT_AOV: float = 65.00                       # Default Average Order Value ($)
     DEFAULT_GROSS_MARGIN: float = 0.40               # 40% Gross Profit Margin ($26.00 profit)
     DEFAULT_DISCOUNT_RATE: float = 0.10              # 10% Discount Rate ($6.50 cost)
-    MIN_EMV_THRESHOLD: float = 3.50                 # Requires at least $3.50 net EMV gain
+    MIN_EMV_AOV_PERCENT_THRESHOLD: float = 0.05  # Requires net EMV gain of at least 5% of AOV
     MAX_CART_OVERRIDE_MULTIPLIER: float = 3.0       # Clamps cart_value_override to max 3x price_sum_viewed or AOV
     RISK_AVERSION_LAMBDA: float = 0.5               # Risk penalty coefficient for CATE variance
 

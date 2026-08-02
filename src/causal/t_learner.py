@@ -48,14 +48,21 @@ class CausalTLearner:
             input_vector = input_vector.reshape(1, -1)
 
         # 1. Inference Execution
-        if not self.is_fallback_mode:
-            p_control = float(self.model_control.predict_proba(input_vector)[:, 1][0])
-            p_treatment = float(self.model_treatment.predict_proba(input_vector)[:, 1][0])
-            model_source = "trained_artifact"
-        else:
-            p_control = 0.35
-            p_treatment = 0.52
-            model_source = "fallback_heuristic"
+        if self.is_fallback_mode:
+            # Fail-closed: If models are not loaded, never issue a discount.
+            return {
+                "p_control": 0.0,
+                "p_treatment": 0.0,
+                "cate_uplift": 0.0,
+                "net_emv_dollars": 0.0,
+                "trigger_discount": False,
+                "model_source": "fallback_fail_closed",
+                "is_holdout": False  # No exploration in fallback
+            }
+
+        p_control = float(self.model_control.predict_proba(input_vector)[:, 1][0])
+        p_treatment = float(self.model_treatment.predict_proba(input_vector)[:, 1][0])
+        model_source = "trained_artifact"
 
         # 2. Risk-Adjusted Financial Gate Evaluation (Unpacks 4 values)
         trigger_discount, net_emv_risk, net_emv_mean, cate_uplift = evaluate_expected_monetary_value(

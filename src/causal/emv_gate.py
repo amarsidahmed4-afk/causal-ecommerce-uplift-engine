@@ -14,7 +14,7 @@ def evaluate_expected_monetary_value(
     aov: float = None,
     gross_margin: float = None,
     discount_rate: float = None,
-    min_emv_threshold: float = None,
+    min_emv_aov_percent_threshold: float = None,
     risk_lambda: float = None
 ) -> tuple[bool, float, float, float]:
     """
@@ -30,7 +30,7 @@ def evaluate_expected_monetary_value(
     aov = aov if aov is not None else settings.DEFAULT_AOV
     gross_margin = gross_margin if gross_margin is not None else settings.DEFAULT_GROSS_MARGIN
     discount_rate = discount_rate if discount_rate is not None else settings.DEFAULT_DISCOUNT_RATE
-    min_emv_threshold = min_emv_threshold if min_emv_threshold is not None else settings.MIN_EMV_THRESHOLD
+    min_emv_aov_percent_threshold = min_emv_aov_percent_threshold if min_emv_aov_percent_threshold is not None else settings.MIN_EMV_AOV_PERCENT_THRESHOLD
     risk_lambda = risk_lambda if risk_lambda is not None else settings.RISK_AVERSION_LAMBDA
 
     # Financial Math
@@ -49,6 +49,7 @@ def evaluate_expected_monetary_value(
     net_emv_risk_adjusted = net_emv_mean - (risk_lambda * emv_uncertainty_dollars)
 
     # Decision Logic: Trigger ONLY if Risk-Adjusted EMV meets minimum threshold
-    trigger_action = bool(net_emv_risk_adjusted >= min_emv_threshold)
+    dynamic_min_emv_threshold = aov * min_emv_aov_percent_threshold
+    trigger_action = bool(net_emv_risk_adjusted >= dynamic_min_emv_threshold)
 
     return trigger_action, float(net_emv_risk_adjusted), float(net_emv_mean), float(cate_uplift)
