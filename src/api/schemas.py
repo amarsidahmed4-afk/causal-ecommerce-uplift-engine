@@ -33,3 +33,11 @@ class PredictionResponse(BaseModel):
     is_holdout: bool = Field(False, description="True if session was randomly assigned to exploration holdout")
     version: str = Field(..., description="API Version")
     tracking_mode: str = Field("client_side", description="'client_side' or 'server_side'")
+    trust_level: str = Field(
+        ...,
+        description=(
+            "'authoritative' (server-to-server key: safe to act on directly) or "
+            "'advisory' (client-side/public key: UI-hint only, must NOT be wired "
+            "to real coupon/checkout actions — confirm via an authoritative call)"
+        )
+    )

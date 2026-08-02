@@ -9,6 +9,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# One-time setup required before this workflow can deploy successfully:
+#   gh secret set API_KEY --body "$(openssl rand -hex 32)"
+#   gh secret set PUBLIC_API_KEY --body "$(openssl rand -hex 32)"
+# (GCP_SA_KEY is assumed already configured from the prior deploy pipeline.)
+# These land as plain Cloud Run env vars, readable by anyone with Cloud Run
+# viewer IAM on this project — acceptable for a first hardening pass, but the
+# next upgrade is `--set-secrets` against Secret Manager instead of env_vars,
+# so the value never appears in `gcloud run services describe` output.
 env:
   GCP_PROJECT_ID: gtm-m4299zzd-nti4m
   GCP_REGION: europe-west1
@@ -16,7 +24,32 @@ env:
   SERVICE_NAME: causal-ecommerce-uplift-engine
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    # Dummy, non-production values — only need to satisfy the dev-mode config
+    # path (ENVIRONMENT=development) so the suite can authenticate its own
+    # requests. Never reused for the actual deploy below.
+    env:
+      ENVIRONMENT: development
+      API_KEY: ci-test-key-not-for-prod
+      PUBLIC_API_KEY: ci-test-public-key-not-for-prod
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run test suite
+        run: pytest -v
+
   deploy-to-cloud-run:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -61,8 +94,17 @@ jobs:
           flags: |
             --min-instances=1
             --allow-unauthenticated
+          # --allow-unauthenticated is intentional: this is a public-facing
+          # decision API by design (GTM/storefront callers). Access control
+          # is enforced in-app via API_KEY/PUBLIC_API_KEY, not IAM — see
+          # config/settings.py. If that assumption ever changes (e.g. this
+          # becomes internal-only), switch to IAM auth + remove this flag
+          # instead of layering more app-level checks on top.
           env_vars: |
             GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }}
             PUBSUB_TOPIC_ID=intent-telemetry-stream
             BQ_DATASET_ID=ml_logs
             BQ_TABLE_ID=causal_predictions_log
+            ENVIRONMENT=production
+            API_KEY=${{ secrets.API_KEY }}
+            PUBLIC_API_KEY=${{ secrets.PUBLIC_API_KEY }}

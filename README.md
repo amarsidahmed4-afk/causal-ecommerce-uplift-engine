@@ -28,7 +28,7 @@ An incentive is recommended only if $\text{EMV} \ge (\text{AOV} \times \text{MIN
 ### Technical Capabilities
 * Inference Performance: C-contiguous 2D NumPy array execution in FastAPI, bypassing Pandas DataFrame instantiation on the critical inference path.
 * Calibrated Model Artifacts: LightGBM base estimators wrapped with Platt scaling (`CalibratedClassifierCV`) shipped directly inside the Docker container (`models/*.joblib`).
-* Authentication: Enforces mandatory API key authentication (`X-API-Key` header) on all prediction endpoints to prevent unauthorized access.
+* Authentication: Two-tier `X-API-Key` model. `API_KEY` (authoritative, server-to-server only) is safe to wire to real actions; `PUBLIC_API_KEY` (advisory, client-side) is assumed public and every response it authenticates is labeled `"trust_level": "advisory"` — see `GTM_INTEGRATION_V2.md` for why a single shared secret can't work when part of the call chain runs in the browser. Neither key has an insecure default: with `ENVIRONMENT=production`, the service refuses to start unless a real, distinct `API_KEY` is configured.
 * Adversarial Protection: Clamps all key numeric input features to reasonable maximums based on the training data distribution, preventing malicious callers from passing inflated values to force discount triggers.
 * Dual-Mode Telemetry: Supports client-side browser dataLayer events and server-side GTM proxying (`X-Tracking-Mode`).
 * Asynchronous Logging: Non-blocking Cloud Pub/Sub publishing for robust, high-throughput telemetry. The default Pub/Sub client includes retry mechanisms for transient network issues.
@@ -119,7 +119,7 @@ streamlit run ui/streamlit_app.py
 
 ## API Payload Specification
 
-**Note:** All requests to `/predict_v2` must include a valid `X-API-Key` header for authentication.
+**Note:** All requests to `/predict_v2` must include a valid `X-API-Key` header — either `API_KEY` (authoritative) or `PUBLIC_API_KEY` (advisory). Every response includes `"trust_level"` so callers can tell which tier answered; only `"authoritative"` responses should ever be wired to a real coupon/checkout action. See "Trust Model" in `GTM_INTEGRATION_V2.md`.
 
 ### Request Body (`POST /predict_v2`)
 ```json

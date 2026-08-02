@@ -1,6 +1,7 @@
 """
-FastAPI Microservice (Hardened v2.2).
-Includes adversarial cart value clamping, API key authentication, and risk-adjusted EMV gating.
+FastAPI Microservice (Hardened v2.3).
+Includes adversarial cart value clamping, two-tier API key authentication
+(authoritative vs advisory), and relative risk-adjusted EMV gating.
 """
 import json
 from datetime import datetime, timezone
@@ -33,25 +34,36 @@ app.add_middleware(
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
-async def verify_api_key(api_key: Optional[str] = Security(api_key_header)):
-    """Enforces API Key verification.
-    
-    Raises:
-        HTTPException: 503 if server authentication is not configured.
-        HTTPException: 401 if the provided API key is invalid or missing.
+async def verify_api_key(api_key: Optional[str] = Security(api_key_header)) -> str:
     """
-    if not settings.API_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Server authentication not configured"
-        )
-    
-    if not api_key or api_key != settings.API_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized: Invalid or missing API Key"
-        )
-    return api_key
+    Two-tier authentication. Returns a trust level, not just pass/fail:
+
+      - "authoritative": caller used API_KEY (server-to-server only — GTM
+        Server-Side, your backend, a checkout webhook). Safe to wire directly
+        to a real action.
+      - "advisory": caller used PUBLIC_API_KEY (client-side/browser). This key
+        is assumed public — anything shipped to a browser is, by definition,
+        extractable via devtools. Responses under this tier are informational
+        only; see predict_causal_intent() and GTM_INTEGRATION_V2.md.
+
+    Neither tier means "unauthenticated" — both still require a matching key,
+    which keeps out casual scanning/replay traffic and gives the advisory
+    tier a distinct key to rate-limit/quota at the infra layer (Cloud Armor /
+    API Gateway) independently of the authoritative one. It does NOT mean the
+    advisory tier's input is trustworthy — it isn't, and the code never
+    treats it as such.
+
+    Raises:
+        HTTPException: 401 if the provided key matches neither configured tier.
+    """
+    if api_key and settings.API_KEY and api_key == settings.API_KEY:
+        return "authoritative"
+    if api_key and settings.PUBLIC_API_KEY and api_key == settings.PUBLIC_API_KEY:
+        return "advisory"
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Unauthorized: Invalid or missing API Key"
+    )
 
 causal_engine = CausalTLearner()
 
@@ -75,11 +87,19 @@ async def predict_causal_intent(
     event: LiveEventInput,
     verbose: bool = False,
     x_tracking_mode: Optional[str] = Header(None, alias="X-Tracking-Mode"),
-    api_key: Optional[str] = Depends(verify_api_key)
+    trust_level: str = Depends(verify_api_key)
 ):
     """
     Real-Time Causal Intent & Risk-Adjusted EMV Decision Endpoint.
     Clamps adversarial cart_value_override inputs to prevent spoofed discount triggers.
+
+    IMPORTANT — advisory tier: when trust_level == "advisory" (client-side/
+    public key), the response is UI-hint-only. `trigger_discount` still
+    reflects the model's best estimate (so a storefront can show a banner/
+    modal), but nothing calling this endpoint with the public key should
+    ever apply a real coupon/checkout discount off of it directly — that
+    decision must come from a follow-up authoritative call using server-
+    known state. See GTM_INTEGRATION_V2.md.
     """
     try:
         # Clamp adversarial inputs to reasonable maximums based on training data distribution
@@ -121,6 +141,7 @@ async def predict_causal_intent(
             "model_source": result["model_source"],
             "is_holdout": result["is_holdout"],
             "tracking_mode": resolved_tracking_mode,
+            "trust_level": trust_level,
             "session_id": event.session_id,
             "version": settings.VERSION
         }
@@ -136,7 +157,8 @@ async def predict_causal_intent(
             model_source=result["model_source"],
             is_holdout=result["is_holdout"],
             version=settings.VERSION,
-            tracking_mode=resolved_tracking_mode
+            tracking_mode=resolved_tracking_mode,
+            trust_level=trust_level
         )
 
     except HTTPException:

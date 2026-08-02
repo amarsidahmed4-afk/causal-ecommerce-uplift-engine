@@ -56,16 +56,21 @@ Server-Side tracking routes telemetry server-to-server rather than directly from
 
 ## Step 3: Server-Side Response Handling
 
-The API returns the decision payload to the GTM Server Container in sub-20 milliseconds:
+The API returns the decision payload to the GTM Server Container:
 
 ```json
 {
   "trigger_discount": true,
   "model_source": "trained_artifact",
   "is_holdout": false,
-  "version": "2.2.0",
-  "tracking_mode": "server_side"
+  "version": "2.3.0",
+  "tracking_mode": "server_side",
+  "trust_level": "authoritative"
 }
 ```
 
+`trust_level` will read `"authoritative"` here because the request used `API_KEY`, not `PUBLIC_API_KEY` — confirm this field before acting on `trigger_discount`. **This is the only path in this system that should ever result in a real coupon/checkout discount being applied.** The client-side integration (`GTM_INTEGRATION_V2.md`) always returns `"trust_level": "advisory"` and is UI-hint-only by design, because the browser cannot hold a secret or be trusted to self-report accurate behavioral data.
+
 If `trigger_discount === true`, the GTM Server Container returns an HTTP header or cookie to the browser to display the storefront offer.
+
+**Important caveat on "server-side":** this container is only as trustworthy as the data it forwards. If the payload fields above (`session_duration_sec`, `cart_add_count`, etc.) are populated by relaying whatever the browser's `dataLayer` sent — which is the common GTM Server-Side setup — you've moved the network hop but not the trust boundary; the input is still visitor-controlled. For a real discount-application decision (Step 4b in `GTM_INTEGRATION_V2.md`), this container should independently look up cart state from your platform's server-side cart/order API rather than forwarding client-reported values.

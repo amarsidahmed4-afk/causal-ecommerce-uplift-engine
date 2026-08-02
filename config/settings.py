@@ -11,12 +11,32 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # Application Metadata
     PROJECT_NAME: str = "Causal Ecommerce Uplift Engine"
-    VERSION: str = "2.2.0"
+    VERSION: str = "2.3.0"
     DEBUG: bool = False
 
-    # Security & Access Control
-    API_KEY: str = os.getenv("API_KEY", "local-dev-key-not-for-prod")
-    
+    # "development" (default, safe local ergonomics) or "production" (strict, fail-fast).
+    # Deploy pipelines MUST set ENVIRONMENT=production explicitly (see deploy.yml).
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+
+    # Security & Access Control — two-tier trust model.
+    #
+    # API_KEY (authoritative): server-to-server only. Anything authenticated with
+    # this key may be safely wired to a real action (coupon minting, checkout
+    # discounts). NEVER embed this in browser-executed code — see
+    # GTM_INTEGRATION_V2.md "Trust Model".
+    #
+    # PUBLIC_API_KEY (advisory): assume this is public the moment it ships to a
+    # browser, because it is. Requests authenticated with it are rate-limit
+    # candidates and always get an advisory-only response — see verify_api_key()
+    # in src/api/main.py. It exists so client-side callers aren't fully
+    # unauthenticated (basic bot/scanner friction + per-key quota in front
+    # of Cloud Armor/API Gateway), not to gate real decisions.
+    #
+    # Neither has an insecure default. An unset key means "this tier is
+    # disabled" (see _validate_security below), not "accept anything."
+    API_KEY: str = os.getenv("API_KEY", "")
+    PUBLIC_API_KEY: str = os.getenv("PUBLIC_API_KEY", "")
+
     # Typed as str so pydantic_settings never attempts json.loads("") on empty env vars
     CORS_ORIGINS: str = "*"
 
@@ -62,4 +82,50 @@ class Settings(BaseSettings):
     )
 
 
+# Known-bad values from earlier revisions of this project. If any of these are
+# still set, treat it as a live incident, not a warning: a public repo/commit
+# history has already published these exact strings.
+_LEAKED_DEFAULT_KEYS = {"local-dev-key-not-for-prod"}
+
+
+def _validate_security(cfg: "Settings") -> None:
+    """
+    Fail fast and loud rather than silently serving an unauthenticated or
+    trivially-guessable endpoint. Runs at import time so a misconfigured
+    container crash-loops on boot (visible in Cloud Run deploy logs) instead
+    of serving traffic in a degraded, silently-open state.
+
+    Kept as a standalone function (not inline at module scope) so it can be
+    exercised directly in tests without needing a subprocess per case.
+    """
+    if cfg.ENVIRONMENT not in ("development", "production"):
+        raise RuntimeError(
+            f"FATAL: ENVIRONMENT='{cfg.ENVIRONMENT}' is not valid. "
+            "Set ENVIRONMENT to 'development' or 'production'."
+        )
+
+    if cfg.ENVIRONMENT != "production":
+        return  # Local/dev ergonomics: no key required to just run the app.
+
+    if not cfg.API_KEY:
+        raise RuntimeError(
+            "FATAL: ENVIRONMENT=production but API_KEY is not set. "
+            "This service refuses to start without authentication configured. "
+            "Generate one with `openssl rand -hex 32` and inject it via your "
+            "deployment platform's secret store (see .github/workflows/deploy.yml)."
+        )
+    if cfg.API_KEY in _LEAKED_DEFAULT_KEYS:
+        raise RuntimeError(
+            "FATAL: API_KEY is a previously-published placeholder value. "
+            "Rotate it immediately and set a real secret."
+        )
+    if cfg.PUBLIC_API_KEY and cfg.PUBLIC_API_KEY == cfg.API_KEY:
+        raise RuntimeError(
+            "FATAL: PUBLIC_API_KEY must not equal API_KEY. The public key is "
+            "assumed leaked by design (it ships to browsers); reusing the "
+            "authoritative key here defeats the trust-tier split entirely."
+        )
+
+
 settings = Settings()
+_validate_security(settings)

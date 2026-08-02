@@ -4,6 +4,9 @@ Unit & Regression Tests for Causal Uplift Engine API & EMV Gate.
 Includes regression tests for Section 5.1 AOV Proxy Bug and Section 4.1 Adversarial Cart Clamping.
 """
 import os
+import subprocess
+import sys
+from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 import importlib
@@ -15,8 +18,26 @@ from src.causal.emv_gate import evaluate_expected_monetary_value
 # Instantiate FastAPI TestClient
 client = TestClient(app)
 
-# Common headers including the API key for authenticated requests
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+# Authoritative (server-to-server) vs advisory (client-side/public) headers.
 auth_headers = {"X-API-Key": settings.API_KEY}
+public_headers = {"X-API-Key": settings.PUBLIC_API_KEY}
+
+
+def _run_settings_validation(env_overrides: dict) -> subprocess.CompletedProcess:
+    """Spawns a fresh process to exercise config/settings.py's module-level
+    fail-fast check in isolation — it runs at import time, so it can't be
+    triggered a second time within this already-running test process."""
+    env = {"PATH": os.environ.get("PATH", "")}
+    env.update(env_overrides)
+    return subprocess.run(
+        [sys.executable, "-c", "import config.settings"],
+        cwd=str(REPO_ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_health_check_reports_model_status():
@@ -72,6 +93,7 @@ def test_predict_v2_sanitized_non_verbose_response():
     assert data["cate_uplift"] is None
     assert data["p_control"] is None
     assert data["p_treatment"] is None
+    assert data["trust_level"] == "authoritative"
 
 
 def test_input_bounds_validation():
@@ -265,3 +287,97 @@ def test_adversarial_feature_injection_is_clamped():
     # This verifies the fix: the clamped, less extreme feature values should
     # no longer be sufficient to trigger a discount.
     assert data["trigger_discount"] is False
+
+
+# ---------------------------------------------------------------------------
+# Two-tier trust model (client-side "advisory" vs server-to-server
+# "authoritative") — see src/api/main.py:verify_api_key and
+# GTM_INTEGRATION_V2.md "Trust Model".
+# ---------------------------------------------------------------------------
+
+def test_public_key_is_labeled_advisory():
+    """The client-side/public key must always come back marked advisory,
+    regardless of what trigger_discount says, so callers can't accidentally
+    wire it to a real action."""
+    payload = {
+        "visitor_type_encoded": 1, "traffic_type": 2,
+        "session_duration_sec": 120.0, "product_views_count": 5,
+        "cart_add_count": 1, "price_sum_viewed": 150.0,
+        "time_since_last_action": 12.5,
+    }
+    response = client.post("/predict_v2?verbose=true", json=payload, headers=public_headers)
+    assert response.status_code == 200
+    assert response.json()["trust_level"] == "advisory"
+
+
+def test_authoritative_key_is_labeled_authoritative():
+    """The server-to-server key must come back marked authoritative, so a
+    checkout-side integration can positively confirm it's safe to act on."""
+    payload = {
+        "visitor_type_encoded": 1, "traffic_type": 2,
+        "session_duration_sec": 120.0, "product_views_count": 5,
+        "cart_add_count": 1, "price_sum_viewed": 150.0,
+        "time_since_last_action": 12.5,
+    }
+    response = client.post("/predict_v2?verbose=true", json=payload, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["trust_level"] == "authoritative"
+
+
+def test_public_key_does_not_authenticate_as_authoritative():
+    """The public key must never be accepted where the authoritative key is
+    expected — i.e. the two tiers are not interchangeable."""
+    assert settings.PUBLIC_API_KEY != settings.API_KEY
+    payload = {
+        "visitor_type_encoded": 1, "traffic_type": 2,
+        "session_duration_sec": 120.0, "product_views_count": 5,
+        "cart_add_count": 1, "price_sum_viewed": 150.0,
+        "time_since_last_action": 12.5,
+    }
+    response = client.post("/predict_v2?verbose=true", json=payload, headers=public_headers)
+    assert response.json()["trust_level"] != "authoritative"
+
+
+# ---------------------------------------------------------------------------
+# Fail-fast production config validation (config/settings.py:_validate_security)
+# Each case spawns a fresh interpreter since the check runs once, at import.
+# ---------------------------------------------------------------------------
+
+def test_production_without_api_key_fails_fast():
+    result = _run_settings_validation({"ENVIRONMENT": "production"})
+    assert result.returncode != 0
+    assert "API_KEY is not set" in result.stderr
+
+
+def test_production_rejects_leaked_default_key():
+    result = _run_settings_validation({
+        "ENVIRONMENT": "production",
+        "API_KEY": "local-dev-key-not-for-prod",
+    })
+    assert result.returncode != 0
+    assert "previously-published placeholder" in result.stderr
+
+
+def test_production_rejects_matching_public_and_authoritative_keys():
+    result = _run_settings_validation({
+        "ENVIRONMENT": "production",
+        "API_KEY": "same-value-abc123",
+        "PUBLIC_API_KEY": "same-value-abc123",
+    })
+    assert result.returncode != 0
+    assert "must not equal API_KEY" in result.stderr
+
+
+def test_production_with_proper_distinct_keys_boots_cleanly():
+    result = _run_settings_validation({
+        "ENVIRONMENT": "production",
+        "API_KEY": "real-authoritative-secret",
+        "PUBLIC_API_KEY": "real-public-secret",
+    })
+    assert result.returncode == 0, result.stderr
+
+
+def test_development_mode_does_not_require_any_key():
+    """Local dev ergonomics: no key required unless ENVIRONMENT=production."""
+    result = _run_settings_validation({"ENVIRONMENT": "development"})
+    assert result.returncode == 0, result.stderr
