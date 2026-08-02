@@ -15,11 +15,11 @@ $$\text{CATE } \tau(X) = \mathbb{E}[Y^{(1)} - Y^{(0)} \mid X]$$
 * Causal Uplift Models (v2.0+): Estimate $\tau(X) = P(Y^{(1)} \mid X) - P(Y^{(0)} \mid X)$. Targets persuadable sessions to protect gross margins.
 
 ### Risk-Adjusted Expected Monetary Value (EMV) Decision Gate
-Interventions are triggered only when the calculated Risk-Adjusted Expected Monetary Value is positive:
+Interventions are triggered only when the calculated Expected Monetary Value is positive:
 
-$$\text{EMV}_{\text{risk}} = \left[ P(Y^{(1)}) \times (\text{AOV} \times \text{Margin} - \text{Discount Cost}) \right] - \left[ P(Y^{(0)}) \times (\text{AOV} \times \text{Margin}) \right] - \lambda \cdot \sigma_{\text{CATE}}$$
+$$\text{EMV} = \left[ P(Y^{(1)}) \times (\text{AOV} \times \text{Margin} - \text{Discount Cost}) \right] - \left[ P(Y^{(0)}) \times (\text{AOV} \times \text{Margin}) \right]$$
 
-An incentive is recommended only if $\text{EMV}_{\text{risk}} \ge \text{MIN\_EMV\_THRESHOLD}$ (configured via settings, default $3.50).
+An incentive is recommended only if $\text{EMV} \ge (\text{AOV} \times \text{MIN\_EMV\_AOV\_PERCENT\_THRESHOLD})$ (configured via settings, default 5%).
 
 ---
 
@@ -28,9 +28,10 @@ An incentive is recommended only if $\text{EMV}_{\text{risk}} \ge \text{MIN\_EMV
 ### Technical Capabilities
 * Inference Performance: C-contiguous 2D NumPy array execution in FastAPI, bypassing Pandas DataFrame instantiation on the critical inference path.
 * Calibrated Model Artifacts: LightGBM base estimators wrapped with Platt scaling (`CalibratedClassifierCV`) shipped directly inside the Docker container (`models/*.joblib`).
-* Adversarial Protection: Clamps `cart_value_override` to prevent malicious callers from passing inflated order totals to force discount triggers.
+* Authentication: Enforces mandatory API key authentication (`X-API-Key` header) on all prediction endpoints to prevent unauthorized access.
+* Adversarial Protection: Clamps all key numeric input features to reasonable maximums based on the training data distribution, preventing malicious callers from passing inflated values to force discount triggers.
 * Dual-Mode Telemetry: Supports client-side browser dataLayer events and server-side GTM proxying (`X-Tracking-Mode`).
-* Asynchronous Logging: Non-blocking Cloud Pub/Sub publishing with direct BigQuery streaming and exponential backoff retries (`google.api_core.retry.Retry`).
+* Asynchronous Logging: Non-blocking Cloud Pub/Sub publishing for robust, high-throughput telemetry. The default Pub/Sub client includes retry mechanisms for transient network issues.
 * Offline Policy Evaluation: Implements Doubly Robust (DR) policy value estimation and Inverse Propensity Weighting (IPW) in `notebooks/04_policy_evaluation.py`.
 * Exploration Policy: Configurable 5% randomized holdout arm (`EXPLORATION_RATE`) to continuously collect unbiased online experiment streams (`is_holdout=true`).
 
@@ -117,6 +118,8 @@ streamlit run ui/streamlit_app.py
 ---
 
 ## API Payload Specification
+
+**Note:** All requests to `/predict_v2` must include a valid `X-API-Key` header for authentication.
 
 ### Request Body (`POST /predict_v2`)
 ```json

@@ -66,11 +66,13 @@ Create a Custom HTML Tag in GTM triggered on the `evaluate_causal_intent` custom
   (function() {
     var payload = {{dlv - causal_payload}};
     var apiUrl = "https://YOUR_CLOUD_RUN_URL/predict_v2";
+    var apiKey = "YOUR_API_KEY"; // <-- Important: Replace with your actual API Key
 
     fetch(apiUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-API-Key': apiKey
       },
       body: JSON.stringify(payload)
     })

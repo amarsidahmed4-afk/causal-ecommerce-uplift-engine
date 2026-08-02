@@ -34,6 +34,7 @@ Server-Side tracking routes telemetry server-to-server rather than directly from
 * HTTP Headers:
   * `Content-Type`: `application/json`
   * `X-Tracking-Mode`: `server_side`
+  * `X-API-Key`: `{{Your GTM Secret Variable}}`  // Store your API Key as a secret variable in GTM Server-Side
 
 ### Request Payload Format (Server-to-Server)
 
