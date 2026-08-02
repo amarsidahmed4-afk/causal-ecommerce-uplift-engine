@@ -1,31 +1,31 @@
 """
-Asynchronous Google Cloud Pub/Sub Telemetry Publisher (Hardened).
-Streams event telemetry to Cloud Pub/Sub with automatic retries and exponential backoff.
+Asynchronous Google Cloud Pub/Sub Telemetry Publisher (Lazy Initialized).
+Guarantees fast container cold-boot times by initializing GCP client on first request.
 """
 import json
 from config.settings import settings
 
-try:
-    from google.cloud import pubsub_v1
-    from google.api_core import retry
+_publisher_client = None
+_topic_path = None
+_pubsub_initialized = False
 
-    publisher_client = pubsub_v1.PublisherClient()
-    topic_path = publisher_client.topic_path(settings.GCP_PROJECT_ID, settings.PUBSUB_TOPIC_ID)
-    
-    # Exponential backoff retry policy for Pub/Sub publish calls
-    custom_retry = retry.Retry(
-        initial=0.1,
-        maximum=5.0,
-        multiplier=2.0,
-        deadline=10.0
-    )
-    PUBSUB_ENABLED = True
-except Exception as e:
-    print(f"⚠️ Pub/Sub Client initialization note: {e}. Local offline mode active.")
-    publisher_client = None
-    topic_path = None
-    custom_retry = None
-    PUBSUB_ENABLED = False
+
+def _get_pubsub_client():
+    """Lazily initializes Pub/Sub publisher client on first use."""
+    global _publisher_client, _topic_path, _pubsub_initialized
+    if not _pubsub_initialized:
+        try:
+            from google.cloud import pubsub_v1
+
+            _publisher_client = pubsub_v1.PublisherClient()
+            _topic_path = _publisher_client.topic_path(settings.GCP_PROJECT_ID, settings.PUBSUB_TOPIC_ID)
+            _pubsub_initialized = True
+        except Exception as e:
+            print(f"⚠️ Pub/Sub Client initialization note: {e}. Running in local/mock mode.")
+            _publisher_client = None
+            _topic_path = None
+            _pubsub_initialized = True
+    return _publisher_client, _topic_path
 
 
 def _pubsub_callback(future):
@@ -35,21 +35,22 @@ def _pubsub_callback(future):
         if settings.DEBUG:
             print(f"✅ Telemetry published to Pub/Sub. Message ID: {message_id}")
     except Exception as e:
-        print(f"❌ Failed to publish telemetry to Pub/Sub after retries: {e}")
+        print(f"❌ Failed to publish telemetry to Pub/Sub: {e}")
 
 
 def publish_telemetry_async(telemetry_data: dict) -> None:
     """
-    Publishes telemetry payload dictionary to Cloud Pub/Sub asynchronously with retries.
+    Publishes telemetry payload dictionary to Cloud Pub/Sub asynchronously.
     """
-    if not PUBSUB_ENABLED or not publisher_client:
+    client, topic = _get_pubsub_client()
+    if not client or not topic:
         if settings.DEBUG:
             print(f"ℹ️ [Mock Telemetry Log]: {telemetry_data}")
         return
 
     try:
         data_bytes = json.dumps(telemetry_data).encode("utf-8")
-        future = publisher_client.publish(topic_path, data_bytes, retry=custom_retry)
+        future = client.publish(topic, data_bytes)
         future.add_done_callback(_pubsub_callback)
     except Exception as e:
         print(f"⚠️ Pub/Sub publish execution error: {e}")
