@@ -11,6 +11,14 @@ from sklearn.calibration import CalibratedClassifierCV
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score
 
+print("="*60)
+print("! WARNING: SYNTHETIC DATA - NOT FOR PRODUCTION VALIDATION !")
+print("Qini/AUUC scores here reflect the model's ability to memorize")
+print("the closed -form data generator function. These metrics DO NOT")
+print("represent real-world causal lift. Retrain on historical A/B")
+print("holdout logs from BigQuery before going live.")
+print("="*60 + "\n")
+
 
 def generate_synthetic_ab_data(n_samples: int = 20000, seed: int = 42) -> pd.DataFrame:
     """Generates A/B experiment clickstream telemetry data with CATE penalization."""
