@@ -5,7 +5,14 @@ import os
 import requests
 import streamlit as st
 
-API_URL = os.getenv("API_URL", "http://127.0.0.1:8000/predict_v2")
+# FIX: Append ?verbose=true so the API returns CATE and EMV variables
+API_URL = os.getenv("API_URL", "http://127.0.0.1:8080/predict_v2?verbose=true")
+
+# Include the mandatory API key for the dashboard to function
+headers = {
+"Content -Type": "application/json",
+"X-API-Key": os.getenv("PUBLIC_API_KEY", "your-public -key-here")
+}
 
 st.set_page_config(
     page_title="Causal Ecommerce Uplift Engine v2.0",
