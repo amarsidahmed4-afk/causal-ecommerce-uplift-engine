@@ -101,9 +101,9 @@ python3 notebooks/04_policy_evaluation.py
 
 ### 5. Run Development API
 ```bash
-uvicorn src.api.main:app --reload --port 8000
+uvicorn src.api.main:app --reload --port 8080
 ```
-Swagger UI available at `http://127.0.0.1:8000/docs`
+Swagger UI available at `http://127.0.0.1:8080/docs`
 
 ### 6. Run Merchant Onboarding Simulation
 ```bash

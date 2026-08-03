@@ -8,10 +8,13 @@ import streamlit as st
 # FIX: Append ?verbose=true so the API returns CATE and EMV variables
 API_URL = os.getenv("API_URL", "http://127.0.0.1:8080/predict_v2?verbose=true")
 
-# Include the mandatory API key for the dashboard to function
+# Include the mandatory API key for the dashboard to function.
+# This dashboard is a local/dev tool, not a public storefront integration,
+# so it's reasonable for it to use the advisory/public key — see
+# GTM_INTEGRATION_V2.md "Trust Model" for why that distinction exists.
 headers = {
-"Content -Type": "application/json",
-"X-API-Key": os.getenv("PUBLIC_API_KEY", "your-public -key-here")
+    "Content-Type": "application/json",
+    "X-API-Key": os.getenv("PUBLIC_API_KEY", "your-public-key-here")
 }
 
 st.set_page_config(
@@ -61,7 +64,7 @@ with col3:
     if st.button("🚀 Evaluate Causal Decision", use_container_width=True):
         with st.spinner("Pinging Causal API..."):
             try:
-                res = requests.post(API_URL, json=payload, timeout=5)
+                res = requests.post(API_URL, json=payload, headers=headers, timeout=5)
                 if res.status_code == 200:
                     data = res.json()
                     cate = data["cate_uplift"]
@@ -79,6 +82,8 @@ with col3:
                         st.success(f"🔥 **TRIGGER INCENTIVE**\n\nNet EMV is **+${emv:.2f}**. Discount is profitable.")
                     else:
                         st.warning(f"🧊 **SUPPRESS INCENTIVE**\n\nNet EMV is **${emv:.2f}**. Discount would destroy margin.")
+                elif res.status_code == 401:
+                    st.error("API Error 401: Unauthorized. Check that PUBLIC_API_KEY is set to match the API's configured value.")
                 else:
                     st.error(f"API Error {res.status_code}: {res.text}")
             except Exception as e:

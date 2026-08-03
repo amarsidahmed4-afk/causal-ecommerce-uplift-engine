@@ -16,7 +16,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from config.settings import settings
 
-API_URL = "http://127.0.0.1:8000/predict_v2?verbose=true"
+API_URL = "http://127.0.0.1:8080/predict_v2?verbose=true"
+AUTH_HEADERS = {"X-API-Key": settings.API_KEY}  # authoritative: trusted server-side script
 
 # Merchant Store Economics
 MERCHANT_AOV = 85.00          # Average Order Value ($)
@@ -88,7 +89,7 @@ def run_shopify_simulation(num_sessions: int = 30):
 
         start_time = time.time()
         try:
-            res = requests.post(API_URL, json=payload, timeout=5)
+            res = requests.post(API_URL, json=payload, headers=AUTH_HEADERS, timeout=5)
             latency_ms = (time.time() - start_time) * 1000
 
             if res.status_code == 200:

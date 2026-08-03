@@ -12,7 +12,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from config.settings import settings
 
-API_URL = "http://127.0.0.1:8000"
+API_URL = "http://127.0.0.1:8080"
+AUTH_HEADERS = {"X-API-Key": settings.API_KEY}  # authoritative: trusted server-side script
 
 
 def run_merchant_onboarding_test():
@@ -106,7 +107,7 @@ def run_merchant_onboarding_test():
 
         t0 = time.time()
         # Pass verbose=true to request internal financial metrics for testing
-        res = requests.post(f"{API_URL}/predict_v2?verbose=true", json=payload, timeout=5)
+        res = requests.post(f"{API_URL}/predict_v2?verbose=true", json=payload, headers=AUTH_HEADERS, timeout=5)
         lat_ms = (time.time() - t0) * 1000
 
         if res.status_code == 200:

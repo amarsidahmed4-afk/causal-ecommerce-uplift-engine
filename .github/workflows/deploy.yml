@@ -59,6 +59,22 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
+      - name: Validate required secrets are configured
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+          PUBLIC_API_KEY: ${{ secrets.PUBLIC_API_KEY }}
+        run: |
+          missing=""
+          [ -z "$API_KEY" ] && missing="${missing}API_KEY "
+          [ -z "$PUBLIC_API_KEY" ] && missing="${missing}PUBLIC_API_KEY "
+          if [ -n "$missing" ]; then
+            echo "::error::Missing GitHub secret(s): $missing— set with:"
+            echo "::error::  gh secret set API_KEY --body \"\$(openssl rand -hex 32)\""
+            echo "::error::  gh secret set PUBLIC_API_KEY --body \"\$(openssl rand -hex 32)\""
+            echo "::error::Deploying with these unset causes the container to crash-loop on boot (config/settings.py fails closed in production), which otherwise surfaces as a confusing 'container failed to start and listen on the port' Cloud Run error."
+            exit 1
+          fi
+
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v2
         with:
