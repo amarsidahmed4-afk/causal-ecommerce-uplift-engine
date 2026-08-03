@@ -116,7 +116,7 @@ def run_merchant_onboarding_test():
             cate = data.get("cate_uplift") or 0.0
             p_ctrl = data.get("p_control") or 0.35
 
-            total_emv += emv
+            total_emv += (emv if trigger else 0.0)
             action_str = "🔥 TRIGGER 10% COUPON" if trigger else "🧊 SUPPRESS COUPON"
 
             if trigger:
@@ -133,16 +133,17 @@ def run_merchant_onboarding_test():
         time.sleep(0.1)
 
     # -------------------------------------------------------------------------
-    # Phase 4: Financial ROI Summary Certification
+    # Phase 4: CONNECTIVITY & SMOKE TEST Summary 
     # -------------------------------------------------------------------------
-    print("\n--- PHASE 4: SHOPIFY MERCHANT ROI FINANCIAL CERTIFICATION ---")
+    print("\n--- PHASE 4: SHOPIFY MERCHANT CONNECTIVITY & SMOKE TEST ---")
     print(f" Total Sessions Tested         : {len(test_customers)}")
     print(f" Discounts Triggered           : {triggered_count} (Persuadable Buyers)")
     print(f" Discounts Suppressed          : {suppressed_count} (Organic & Window Shoppers)")
     print(f" Gross Profit Margin Protected : ${margin_saved:.2f} (Prevented cannibalization)")
     print(f" Estimated Net Revenue Lift    : +${total_emv:.2f}")
     print("=" * 80)
-    print(" 🎉 ONBOARDING CERTIFICATION COMPLETE: ENGINE READY FOR LIVE SHOPIFY STOREFRONT ")
+    print(f" CONNECTIVITY & SMOKE TEST COMPLETE")
+    print(f" Note: This confirms API routing , not financial performance.")
     print("=" * 80)
 
 

@@ -99,7 +99,7 @@ def run_shopify_simulation(num_sessions: int = 30):
                 p_ctrl = data.get("p_control") or 0.35
 
                 stats["total_sessions"] += 1
-                stats["estimated_net_emv_dollars"] += emv
+                stats["estimated_net_emv_dollars"] += (emv if trigger else 0.0)
 
                 status_badge = "🔥 TRIGGER DISCOUNT" if trigger else "🧊 SUPPRESS DISCOUNT"
 
