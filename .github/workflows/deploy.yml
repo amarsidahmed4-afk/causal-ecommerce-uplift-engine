@@ -104,6 +104,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Remove Old Env Var Keys Before Deploying Secrets
+        run: |
+          gcloud run services update ${{ env.SERVICE_NAME }} \
+            --region=${{ env.GCP_REGION }} \
+            --remove-env-vars=API_KEY,PUBLIC_API_KEY || true
+
       - name: Deploy to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2
         with:
