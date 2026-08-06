@@ -19,7 +19,9 @@ Interventions are triggered only when the calculated Expected Monetary Value is 
 
 $$\text{EMV} = \left[ P(Y^{(1)}) \times (\text{AOV} \times \text{Margin} - \text{Discount Cost}) \right] - \left[ P(Y^{(0)}) \times (\text{AOV} \times \text{Margin}) \right]$$
 
-An incentive is recommended only if $\text{EMV} \ge (\text{AOV} \times \text{MIN\_EMV\_AOV\_PERCENT\_THRESHOLD})$ (configured via settings, default 5%).
+$$\text{EMV}_{risk\_adjusted} = \text{EMV} - \lambda \cdot (\sigma_{CATE} \times \text{AOV} \times \text{Margin})$$
+
+An incentive is recommended only if $\text{EMV}_{risk\_adjusted} \ge (\text{AOV} \times \text{MIN\_EMV\_AOV\_PERCENT\_THRESHOLD})$ (configured via settings, default 2%).
 
 ---
 

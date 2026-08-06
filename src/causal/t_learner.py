@@ -63,11 +63,21 @@ class CausalTLearner:
         p_control = float(self.model_control.predict_proba(input_vector)[:, 1][0])
         p_treatment = float(self.model_treatment.predict_proba(input_vector)[:, 1][0])
         model_source = "trained_artifact"
+        
+        # Estimate prediction standard error across ensemble base estimators
+        if hasattr(self.model_control, "calibrated_classifiers_") and hasattr(self.model_treatment, "calibrated_classifiers_"):
+            p_ctrl_preds = [clf.predict_proba(input_vector)[:, 1][0] for clf in self.model_control.calibrated_classifiers_]
+            p_treat_preds = [clf.predict_proba(input_vector)[:, 1][0] for clf in self.model_treatment.calibrated_classifiers_]
+            cates = [t - c for t, c in zip(p_treat_preds, p_ctrl_preds)]
+            cate_std_err = float(np.std(cates)) if len(cates) > 0 else 0.05
+        else:
+            cate_std_err = 0.05
 
         # 2. Risk-Adjusted Financial Gate Evaluation (Unpacks 4 values)
         trigger_discount, net_emv_risk, net_emv_mean, cate_uplift = evaluate_expected_monetary_value(
             p_control=p_control,
             p_treatment=p_treatment,
+            cate_std_err=cate_std_err,
             aov=aov
         )
 
