@@ -11,6 +11,7 @@ import pandas as pd
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.causal.t_learner import CausalTLearner
+from src.causal.emv_gate import evaluate_expected_monetary_value
 
 # Import dynamically from module starting with numbers
 training_module = importlib.import_module("notebooks.01_causal_t_learner_training")
@@ -63,9 +64,15 @@ if __name__ == "__main__":
     if not learner.is_fallback_mode:
         p_control_pred = learner.model_control.predict_proba(X_test)[:, 1]
         p_treatment_pred = learner.model_treatment.predict_proba(X_test)[:, 1]
+        
+        # Calculate CATE standard error from ensemble
+        p_ctrl_preds_all = np.array([clf.predict_proba(X_test)[:, 1] for clf in learner.model_control.calibrated_classifiers_])
+        p_treat_preds_all = np.array([clf.predict_proba(X_test)[:, 1] for clf in learner.model_treatment.calibrated_classifiers_])
+        cate_std_err_pred = np.std(p_treat_preds_all - p_ctrl_preds_all, axis=0)
     else:
         p_control_pred = np.full(len(df), 0.35)
         p_treatment_pred = np.full(len(df), 0.52)
+        cate_std_err_pred = np.full(len(df), 0.05)
         
     cate_pred = p_treatment_pred - p_control_pred
     
@@ -73,8 +80,20 @@ if __name__ == "__main__":
     treatment = df['treatment'].values
     propensity = np.full_like(treatment, 0.5, dtype=np.float64) # 50% randomized A/B split
     
-    # Policy Decision: Trigger discount if CATE uplift > 0.05
-    policy_decision = (cate_pred > 0.05).astype(int)
+    # Policy Decision: Trigger discount if Risk-Adjusted EMV > threshold
+    policy_decisions_list = []
+    for pc, pt, cate_std, aov in zip(p_control_pred, p_treatment_pred, cate_std_err_pred, df['price_sum_viewed']):
+        # We'll use price_sum_viewed as a proxy for the cart AOV for this evaluation.
+        # This matches the simulation proxy logic.
+        trigger, _, _, _ = evaluate_expected_monetary_value(
+            p_control=pc, 
+            p_treatment=pt, 
+            cate_std_err=cate_std,
+            aov=max(aov, 10.0)  # clamp aov slightly to avoid zero division/weird metrics
+        )
+        policy_decisions_list.append(1 if trigger else 0)
+        
+    policy_decision = np.array(policy_decisions_list)
     
     ipw_val, dr_val = evaluate_doubly_robust_policy_value(
         y_true, treatment, propensity, p_control_pred, p_treatment_pred, policy_decision

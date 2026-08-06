@@ -12,7 +12,7 @@ from fastapi.security.api_key import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import settings
-from src.api.schemas import LiveEventInput, PredictionResponse
+from src.api.schemas import LiveEventInput, PredictionResponse, ConfirmDiscountInput, ConfirmDiscountResponse
 from src.causal.t_learner import CausalTLearner
 from src.features.intra_session import IntraSessionFeatureExtractor
 from src.telemetry.publisher import publish_telemetry_async
@@ -82,6 +82,16 @@ async def health_check():
     }
 
 
+def _clamp_event_inputs(event: LiveEventInput) -> LiveEventInput:
+    """Clamps adversarial inputs to reasonable maximums based on training data distribution."""
+    event.session_duration_sec = min(event.session_duration_sec, 1000)
+    event.product_views_count = min(event.product_views_count, 50)
+    event.cart_add_count = min(event.cart_add_count, 20)
+    event.price_sum_viewed = min(event.price_sum_viewed, 8000)
+    event.time_since_last_action = min(event.time_since_last_action, 300)
+    return event
+
+
 @app.post("/predict_v2", response_model=PredictionResponse, status_code=status.HTTP_200_OK)
 async def predict_causal_intent(
     event: LiveEventInput,
@@ -102,12 +112,7 @@ async def predict_causal_intent(
     known state. See GTM_INTEGRATION_V2.md.
     """
     try:
-        # Clamp adversarial inputs to reasonable maximums based on training data distribution
-        event.session_duration_sec = min(event.session_duration_sec, 1000)
-        event.product_views_count = min(event.product_views_count, 50)
-        event.cart_add_count = min(event.cart_add_count, 20)
-        event.price_sum_viewed = min(event.price_sum_viewed, 8000)
-        event.time_since_last_action = min(event.time_since_last_action, 300)
+        event = _clamp_event_inputs(event)
 
         resolved_tracking_mode = x_tracking_mode or event.tracking_mode or "client_side"
 
@@ -130,8 +135,8 @@ async def predict_causal_intent(
 
         telemetry_payload = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "event_inputs": json.dumps(event.model_dump()),
-            "derived_metrics": json.dumps(derived_metrics),
+            "event_inputs": event.model_dump(),
+            "derived_metrics": derived_metrics,
             "effective_aov": effective_aov,
             "p_control": result["p_control"],
             "p_treatment": result["p_treatment"],
@@ -169,3 +174,41 @@ async def predict_causal_intent(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Inference execution failed. Please check server logs."
         )
+
+
+@app.post("/confirm_discount", response_model=ConfirmDiscountResponse, status_code=status.HTTP_200_OK)
+async def confirm_discount_server_side(
+    payload: ConfirmDiscountInput,
+    trust_level: str = Depends(verify_api_key)
+):
+    """
+    Authoritative Step 4b: Checkout / Discount Application Gate.
+    Requires server-to-server authoritative API_KEY and definitive cart value.
+    """
+    if trust_level != "authoritative":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: /confirm_discount requires the authoritative API_KEY."
+        )
+
+    try:
+        event = _clamp_event_inputs(payload.event)
+        input_vector = IntraSessionFeatureExtractor.extract_feature_vector(event)
+        
+        result = causal_engine.predict_uplift_and_emv(
+            input_vector=input_vector,
+            aov=payload.server_cart_value
+        )
+        
+        return ConfirmDiscountResponse(
+            apply_discount=result["trigger_discount"],
+            net_emv_dollars=result["net_emv_dollars"],
+            session_id=event.session_id
+        )
+    except Exception as e:
+        print(f"❌ Internal Confirmation Error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Discount confirmation failed. Please check server logs."
+        )
+

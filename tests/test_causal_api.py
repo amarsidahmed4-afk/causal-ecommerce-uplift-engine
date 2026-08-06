@@ -344,7 +344,11 @@ def test_public_key_does_not_authenticate_as_authoritative():
 # ---------------------------------------------------------------------------
 
 def test_production_without_api_key_fails_fast():
-    result = _run_settings_validation({"ENVIRONMENT": "production"})
+    result = _run_settings_validation({
+        "ENVIRONMENT": "production",
+        "API_KEY": "",
+        "PUBLIC_API_KEY": ""
+    })
     assert result.returncode != 0
     assert "API_KEY is not set" in result.stderr
 
@@ -373,6 +377,7 @@ def test_production_with_proper_distinct_keys_boots_cleanly():
         "ENVIRONMENT": "production",
         "API_KEY": "real-authoritative-secret",
         "PUBLIC_API_KEY": "real-public-secret",
+        "CORS_ORIGINS": "https://store.example.com",
     })
     assert result.returncode == 0, result.stderr
 

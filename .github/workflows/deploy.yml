@@ -13,9 +13,7 @@ concurrency:
 #   gh secret set API_KEY --body "$(openssl rand -hex 32)"
 #   gh secret set PUBLIC_API_KEY --body "$(openssl rand -hex 32)"
 # (GCP_SA_KEY is assumed already configured from the prior deploy pipeline.)
-# These land as plain Cloud Run env vars, readable by anyone with Cloud Run
-# viewer IAM on this project — acceptable for a first hardening pass, but the
-# next upgrade is `--set-secrets` against Secret Manager instead of env_vars,
+# These are mapped via `--set-secrets` against Secret Manager instead of env_vars,
 # so the value never appears in `gcloud run services describe` output.
 env:
   GCP_PROJECT_ID: gtm-m4299zzd-nti4m
@@ -127,5 +125,7 @@ jobs:
             BQ_DATASET_ID=ml_logs
             BQ_TABLE_ID=causal_predictions_log
             ENVIRONMENT=production
-            API_KEY=${{ secrets.API_KEY }}
-            PUBLIC_API_KEY=${{ secrets.PUBLIC_API_KEY }}
+            CORS_ORIGINS=https://yourstore.com
+          secrets: |
+            API_KEY=API_KEY:latest
+            PUBLIC_API_KEY=PUBLIC_API_KEY:latest
