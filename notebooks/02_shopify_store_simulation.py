@@ -125,8 +125,16 @@ def run_shopify_simulation(num_sessions: int = 30):
     print(" 📊 SHOPIFY MERCHANT EXECUTIVE FINANCIAL SUMMARY ")
     print("="*75)
     print(f" Total Customer Sessions Analyzed  : {stats['total_sessions']}")
-    print(f" Discounts Triggered (Persuadables): {stats['discounts_triggered']} ({(stats['discounts_triggered']/stats['total_sessions'])*100:.1f}%)")
-    print(f" Discounts Suppressed (Organic/Cold): {stats['discounts_suppressed']} ({(stats['discounts_suppressed']/stats['total_sessions'])*100:.1f}%)")
+    
+    if stats['total_sessions'] > 0:
+        trigger_pct = (stats['discounts_triggered'] / stats['total_sessions']) * 100
+        suppress_pct = (stats['discounts_suppressed'] / stats['total_sessions']) * 100
+    else:
+        trigger_pct = 0.0
+        suppress_pct = 0.0
+        
+    print(f" Discounts Triggered (Persuadables): {stats['discounts_triggered']} ({trigger_pct:.1f}%)")
+    print(f" Discounts Suppressed (Organic/Cold): {stats['discounts_suppressed']} ({suppress_pct:.1f}%)")
     print(f" Profit Margin Saved               : ${stats['margin_saved_organic_buyers']:.2f} (Prevented cannibalization on organic buyers)")
     print(f" Estimated Net Dollar Lift ($)      : +${stats['estimated_net_emv_dollars']:.2f}")
     print("="*75)

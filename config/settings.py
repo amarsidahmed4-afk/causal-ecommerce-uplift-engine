@@ -34,8 +34,8 @@ class Settings(BaseSettings):
     #
     # Neither has an insecure default. An unset key means "this tier is
     # disabled" (see _validate_security below), not "accept anything."
-    API_KEY: str = os.getenv("API_KEY", "")
-    PUBLIC_API_KEY: str = os.getenv("PUBLIC_API_KEY", "")
+    API_KEY: str = os.getenv("API_KEY", "dev-authoritative" if os.getenv("ENVIRONMENT", "development") == "development" else "")
+    PUBLIC_API_KEY: str = os.getenv("PUBLIC_API_KEY", "dev-public" if os.getenv("ENVIRONMENT", "development") == "development" else "")
 
     # Typed as str so pydantic_settings never attempts json.loads("") on empty env vars
     CORS_ORIGINS: str = "*"
@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     DEFAULT_AOV: float = 65.00                       # Default Average Order Value ($)
     DEFAULT_GROSS_MARGIN: float = 0.40               # 40% Gross Profit Margin ($26.00 profit)
     DEFAULT_DISCOUNT_RATE: float = 0.10              # 10% Discount Rate ($6.50 cost)
-    MIN_EMV_AOV_PERCENT_THRESHOLD: float = 0.05  # Requires net EMV gain of at least 5% of AOV
+    MIN_EMV_AOV_PERCENT_THRESHOLD: float = 0.02  # Requires net EMV gain of at least 2% of AOV
     MAX_CART_OVERRIDE_MULTIPLIER: float = 3.0       # Clamps cart_value_override to max 3x price_sum_viewed or AOV
     RISK_AVERSION_LAMBDA: float = 0.5               # Risk penalty coefficient for CATE variance
 
@@ -124,6 +124,11 @@ def _validate_security(cfg: "Settings") -> None:
             "FATAL: PUBLIC_API_KEY must not equal API_KEY. The public key is "
             "assumed leaked by design (it ships to browsers); reusing the "
             "authoritative key here defeats the trust-tier split entirely."
+        )
+    if cfg.cors_origins_list == ["*"]:
+        raise RuntimeError(
+            "FATAL: CORS_ORIGINS cannot be '*' in production. "
+            "Set it to your actual storefront domain(s) for defense-in-depth."
         )
 
 

@@ -35,6 +35,9 @@ def generate_synthetic_ab_data(n_samples: int = 20000, seed: int = 42) -> pd.Dat
     treatment = np.random.binomial(n=1, p=0.5, size=n_samples)
 
     # 3. Base Conversion Propensity (Control Y0 Logits)
+    # Add unobservable latent noise to break deterministic memorization
+    latent_noise = np.random.normal(0, 0.5, size=n_samples)
+    
     base_score = (
         -2.5
         + 0.6 * (visitor_type == 1)
@@ -42,6 +45,7 @@ def generate_synthetic_ab_data(n_samples: int = 20000, seed: int = 42) -> pd.Dat
         + 0.3 * np.log1p(product_views)
         + 0.002 * price_sum
         - 0.01 * np.maximum(0, time_since_last_action - 30)
+        + latent_noise
     )
     p_control_true = 1.0 / (1.0 + np.exp(-base_score))
 
@@ -106,14 +110,24 @@ def train_calibrated_causal_models():
         'time_since_last_action'
     ]
 
+    # Cast to category for LightGBM to natively recognize them
+    df['visitor_type_encoded'] = df['visitor_type_encoded'].astype('category')
+    df['traffic_type'] = df['traffic_type'].astype('category')
+
     train_df, test_df = train_test_split(df, test_size=0.2, random_state=42, stratify=df['converted'])
 
     train_control = train_df[train_df['treatment'] == 0]
     train_treatment = train_df[train_df['treatment'] == 1]
 
     # Base LightGBM Estimators
-    lgbm_control = LGBMClassifier(n_estimators=100, learning_rate=0.04, max_depth=5, random_state=42, verbosity=-1)
-    lgbm_treatment = LGBMClassifier(n_estimators=100, learning_rate=0.04, max_depth=5, random_state=42, verbosity=-1)
+    lgbm_control = LGBMClassifier(
+        n_estimators=100, learning_rate=0.04, max_depth=5, 
+        random_state=42, verbosity=-1
+    )
+    lgbm_treatment = LGBMClassifier(
+        n_estimators=100, learning_rate=0.04, max_depth=5, 
+        random_state=42, verbosity=-1
+    )
 
     print("🌲 Step 2: Fitting Calibrated Control Model Y^(0) (Isotonic/Platt Scaling)...")
     model_control = CalibratedClassifierCV(estimator=lgbm_control, method='sigmoid', cv=3)
