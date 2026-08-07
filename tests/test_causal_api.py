@@ -338,6 +338,38 @@ def test_public_key_does_not_authenticate_as_authoritative():
     assert response.json()["trust_level"] != "authoritative"
 
 
+def test_confirm_discount_endpoint_authentication():
+    """
+    Confirms the Step 4b authoritative endpoint strictly enforces the trust tier.
+    """
+    payload = {
+        "event": {
+            "visitor_type_encoded": 1,
+            "traffic_type": 2,
+            "session_duration_sec": 120.0,
+            "product_views_count": 5,
+            "cart_add_count": 1,
+            "price_sum_viewed": 150.0,
+            "time_since_last_action": 12.5
+        },
+        "server_cart_value": 150.0
+    }
+    
+    # 1. No key -> 401 Unauthorized
+    resp_no_key = client.post("/confirm_discount", json=payload)
+    assert resp_no_key.status_code == 401
+
+    # 2. Advisory (Public) key -> 403 Forbidden
+    resp_advisory = client.post("/confirm_discount", json=payload, headers=public_headers)
+    assert resp_advisory.status_code == 403
+    assert "authoritative API_KEY" in resp_advisory.json()["detail"]
+
+    # 3. Authoritative key -> 200 OK
+    resp_auth = client.post("/confirm_discount", json=payload, headers=auth_headers)
+    assert resp_auth.status_code == 200
+    assert "apply_discount" in resp_auth.json()
+
+
 # ---------------------------------------------------------------------------
 # Fail-fast production config validation (config/settings.py:_validate_security)
 # Each case spawns a fresh interpreter since the check runs once, at import.
@@ -370,6 +402,17 @@ def test_production_rejects_matching_public_and_authoritative_keys():
     })
     assert result.returncode != 0
     assert "must not equal API_KEY" in result.stderr
+
+
+def test_production_rejects_wildcard_cors():
+    result = _run_settings_validation({
+        "ENVIRONMENT": "production",
+        "API_KEY": "real-authoritative-secret",
+        "PUBLIC_API_KEY": "real-public-secret",
+        "CORS_ORIGINS": "*",
+    })
+    assert result.returncode != 0
+    assert "CORS_ORIGINS cannot be '*'" in result.stderr
 
 
 def test_production_with_proper_distinct_keys_boots_cleanly():
