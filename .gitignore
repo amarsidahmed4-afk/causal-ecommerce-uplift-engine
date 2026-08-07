@@ -31,3 +31,4 @@ models/*.joblib
 .aider*
 # Ignore local work summaries
 work_summary*.md
+tst*.txt
