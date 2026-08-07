@@ -29,3 +29,5 @@ models/*.joblib
 # Jupyter Checkpoints
 .ipynb_checkpoints/
 .aider*
+# Ignore local work summaries
+work_summary*.md
