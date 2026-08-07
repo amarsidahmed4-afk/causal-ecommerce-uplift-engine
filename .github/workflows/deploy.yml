@@ -10,9 +10,10 @@ concurrency:
   cancel-in-progress: true
 
 # One-time setup required before this workflow can deploy successfully:
-#   gh secret set API_KEY --body "$(openssl rand -hex 32)"
-#   gh secret set PUBLIC_API_KEY --body "$(openssl rand -hex 32)"
-# (GCP_SA_KEY is assumed already configured from the prior deploy pipeline.)
+#   gcloud secrets create API_KEY --replication-policy="automatic"
+#   gcloud secrets create PUBLIC_API_KEY --replication-policy="automatic"
+# Then populate them and grant your Cloud Run service account the Secret Accessor role.
+# (GCP_SA_KEY is assumed already configured in GitHub Actions from the prior deploy pipeline.)
 # These are mapped via `--set-secrets` against Secret Manager instead of env_vars,
 # so the value never appears in `gcloud run services describe` output.
 env:
